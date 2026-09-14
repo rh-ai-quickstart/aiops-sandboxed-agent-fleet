@@ -50,16 +50,6 @@ function openshell(args: string[], timeoutMs = 180_000): Promise<string> {
   });
 }
 
-function run(cmd: string, args: string[], timeoutMs = 30_000): Promise<string> {
-  return new Promise((resolve) => {
-    const c = spawn(cmd, args, { env, stdio: ["ignore", "pipe", "pipe"] });
-    let out = ""; c.stdout.on("data", (d) => (out += d)); c.stderr.on("data", (d) => (out += d));
-    const t = setTimeout(() => c.kill("SIGTERM"), timeoutMs);
-    c.on("close", () => { clearTimeout(t); resolve(out.trim()); });
-    c.on("error", () => { clearTimeout(t); resolve(""); });
-  });
-}
-
 async function runAgent(agent: string, subtask: string): Promise<string> {
   // `openshell sandbox exec` rejects args containing newlines, and findings are multi-line —
   // so pass the message base64-encoded and decode it inside the sandbox via the shell.
@@ -102,10 +92,6 @@ export async function POST(req: Request) {
         // the intelligence is in each agent's investigation + the writer's synthesis (both reach
         // the model via inference.local, so the website never needs direct model access).
         const PROBES = buildProbes();
-        // Pre-fetch K8s events: the event-exporter → Loki pipeline has latency, so recent
-        // events (especially ScalingReplicaSet updates) may not be in Loki yet. kubectl is
-        // authoritative and instant — pass the output to the events agent as a fallback.
-        const recentEvents = await run("kubectl", ["-n", NS, "get", "events", "--sort-by=.lastTimestamp"]);
         const steps: { agent: string; subtask: string; request: string }[] = investigators.map((a) => {
           const p = PROBES[a];
           // `request` is the exact command the agent will run — surfaced to the UI so you can
@@ -113,9 +99,8 @@ export async function POST(req: Request) {
           const request = p ? `${TQ} '${p.url}'` : "(no backend probe)";
           // Directive subtask: inline the EXACT command. This keeps the tool loop to ~2 calls
           // (run probe → answer), so it finishes in ~30s instead of overflowing context.
-          const eventsCtx = a === "events" && recentEvents ? `\n\nAUTHORITATIVE K8s events (direct from the Kubernetes API — these are your PRIMARY source; the Loki query above may be missing recent events due to pipeline latency):\n${recentEvents}\n\nBase your report on ALL the data above — both the Loki query AND the authoritative events. Pay special attention to any ScalingReplicaSet or Killing events that show a deployment being scaled down.` : "";
           const subtask = p
-            ? `You are the ${a} specialist of an SRE fleet — read-only, sealed to your one backend. Use ONLY the exec tool. Run this EXACT command and report its output verbatim as your finding (it returns ${p.hint}), then briefly state what it means for the incident and STOP. Do not read files, do not use web_fetch or dir_list, and do NOT generate any image.\n\nCommand:\n${TQ} '${p.url}'${eventsCtx}\n\nIncident: ${task}`
+            ? `You are the ${a} specialist of an SRE fleet — read-only, sealed to your one backend. Use ONLY the exec tool. Run this EXACT command and report its output verbatim as your finding (it returns ${p.hint}), then briefly state what it means for the incident and STOP. Do not read files, do not use web_fetch or dir_list, and do NOT generate any image.\n\nCommand:\n${TQ} '${p.url}'\n\nIncident: ${task}`
             : `You are the ${a} specialist of an SRE fleet. You have no configured backend probe for this incident — report that plainly in one line. Do not use any tool and do NOT generate any image.\n\nIncident: ${task}`;
           return { agent: a, subtask, request };
         });
