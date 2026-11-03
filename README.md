@@ -22,7 +22,7 @@ A real dependency of a shop application goes down on Red Hat OpenShift. Four spe
 
 The repository ships the whole stack and an **interactive workshop** (30 lessons, live in-browser terminal) that teaches you to build it, from a single sandbox to the full SRE fleet.
 
-Built by Anshul Jindal and Max Murakami.
+Built by Anshul Jindal and Max Murakami. Multi-attendee lab mode, OpenShell 0.1.6 migration and self-hosted Nemotron MaaS by Mourad Ouachani (@mouachan).
 
 ## ✨ Highlights
 
