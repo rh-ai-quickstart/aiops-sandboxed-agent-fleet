@@ -1,87 +1,137 @@
-# AIOps on OpenShift — A Sandboxed Agent Fleet for Incident Response
+<div align="center">
 
-*A Sample Implementation Using OpenShell and OpenClaw*
+# AIOps on OpenShift
+
+### A fleet of sandboxed AI agents that investigates a real incident, and a hands-on lab to build it yourself
 
 [![CI](https://github.com/rh-ai-quickstart/aiops-sandboxed-agent-fleet/actions/workflows/ci.yml/badge.svg)](https://github.com/rh-ai-quickstart/aiops-sandboxed-agent-fleet/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/rh-ai-quickstart/aiops-sandboxed-agent-fleet?sort=semver)](https://github.com/rh-ai-quickstart/aiops-sandboxed-agent-fleet/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/rh-ai-quickstart/aiops-sandboxed-agent-fleet)](LICENSE)
 ![OpenShift](https://img.shields.io/badge/OpenShift-4.19%2B-ee0000?logo=redhatopenshift&logoColor=white)
-![OpenShell](https://img.shields.io/badge/OpenShell%200.1.6%20·%20OpenClaw-76b900?logo=nvidia&logoColor=white)
-![Next.js](https://img.shields.io/badge/site-Next.js%2016-black?logo=nextdotjs)
+![OpenShell](https://img.shields.io/badge/OpenShell-0.1.6-76b900?logo=nvidia&logoColor=white)
+![OpenClaw](https://img.shields.io/badge/OpenClaw-2026.8.2-76b900)
+![Nemotron](https://img.shields.io/badge/model-Nemotron%203%20Nano%20%28self--hosted%29-76b900?logo=nvidia&logoColor=white)
+![Lab](https://img.shields.io/badge/lab%20mode-1%20cluster%2C%20N%20attendees-ee0000)
 
-A fleet of sandboxed AI agents investigates a real application outage on Red Hat OpenShift. Each agent is scoped to exactly one observability backend and governed by a deny-by-default policy. An analyst agent combines their findings into a root-cause diagnosis and a recommended fix.
+**[Quick start](#-quick-start)** · **[Hands-on lab](#-run-it-as-a-hands-on-lab)** · **[Admin guide](docs/ADMIN-GUIDE.md)** · **[Attendee guide](docs/USER-GUIDE.md)** · **[Review report](README-DEPLOYMENT-REVIEW.md)**
 
-Inference comes from **any OpenAI-compatible endpoint** (no GPU needed), or from **NVIDIA Nemotron 3 Nano self-hosted on the cluster's GPU** and published through OpenShift AI Models-as-a-Service. You can deploy one instance per cluster, or a **hands-on lab where every attendee gets an isolated copy** on one shared cluster.
+</div>
 
-> **Running a workshop for many people?** See [Run it as a multi-attendee lab](#run-it-as-a-multi-attendee-lab), then follow the [Administrator Guide](docs/ADMIN-GUIDE.md). Attendees use the [Attendee Guide](docs/USER-GUIDE.md).
+---
+
+A real dependency of a shop application goes down on Red Hat OpenShift. Four specialist AI agents, each **sealed in its own OpenShell sandbox** and allowed to reach **exactly one** observability backend, investigate in parallel. An analyst agent with no tools and no network combines their findings into a root cause and a fix, and a human approves it.
+
+The repository ships the whole stack and an **interactive workshop** (30 lessons, live in-browser terminal) that teaches you to build it, from a single sandbox to the full SRE fleet.
 
 Built by Anshul Jindal and Max Murakami.
 
-## Table of Contents
+## ✨ Highlights
 
-- [Detailed description](#detailed-description)
-  - [The SRE use case](#the-sre-use-case)
-  - [Architecture diagram](#architecture-diagram)
-  - [Workshop curriculum](#workshop-curriculum)
-- [Run it as a multi-attendee lab](#run-it-as-a-multi-attendee-lab)
-- [Requirements](#requirements)
-  - [Minimum hardware requirements](#minimum-hardware-requirements)
-  - [Minimum software requirements](#minimum-software-requirements)
-- [Deploy](#deploy)
-  - [Prerequisites](#prerequisites)
-  - [Deployment](#deployment)
-  - [Configuration options](#configuration-options)
-  - [Validating the deployment](#validating-the-deployment)
-  - [Provisioning the OpenClaw agent](#provisioning-the-openclaw-agent)
-  - [Delete](#delete)
-- [Technical details](#technical-details)
-  - [Architecture](#architecture)
-  - [Helm chart structure](#helm-chart-structure)
-  - [Key design decisions](#key-design-decisions)
-  - [Components](#components)
-- [Changes in this version](#changes-in-this-version)
-- [Reference](#reference)
-- [Tags](#tags)
+<table>
+<tr>
+<td width="33%" valign="top">
 
-## Detailed description
+**🔒 Sealed agents**<br/>
+Deny-by-default L4 + L7 policies per agent, `restricted-v2` (no privileged SCC). Agents never hold the model key: they see a placeholder that the sandbox proxy swaps on the way out.
 
-### The SRE Use Case
+</td>
+<td width="33%" valign="top">
 
-An instrumented shop application runs on OpenShift with a continuous load generator. A real dependency, the `payments` microservice, is killed (`kubectl scale deploy/payments --replicas=0`), and checkout requests start failing with connection-refused errors. The error rate climbs to 100%.
+**👥 One cluster, N attendees**<br/>
+`scripts/lab.sh up 30` gives every attendee an isolated copy (own gateway, agents, demo app, scoped telemetry, own API key) on **one** shared cluster.
 
-Five sealed AI agents investigate the incident in parallel. Each runs in its own sandbox pod with a deny-by-default egress policy:
+</td>
+<td width="33%" valign="top">
+
+**🧠 Self-hosted model**<br/>
+`scripts/maas.sh up` serves **NVIDIA Nemotron 3 Nano** on a cluster GPU through **OpenShift AI Models-as-a-Service**. Or bring any OpenAI-compatible endpoint, with no GPU at all.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**🔎 Grounded answers**<br/>
+Every finding is checked against the real tool output. A deterministic evidence check reports a healthy app as healthy instead of letting the model invent a fault.
+
+</td>
+<td valign="top">
+
+**🎓 Guided workshop**<br/>
+Next.js site with 30 lessons, a terminal per attendee and "Run in shell" buttons. Every lab lesson is exercised by Playwright end-to-end tests.
+
+</td>
+<td valign="top">
+
+**⚙️ Fully scripted**<br/>
+Deploy, lab provisioning, model serving, health checks, recovery after a cluster restart and teardown are each a single command.
+
+</td>
+</tr>
+</table>
+
+## 🎬 The demo in one minute
+
+```mermaid
+flowchart LR
+    outage["💥 payments scaled to 0<br/>checkout fails: 100% 5xx"]
+    subgraph fleet["Sealed OpenShell sandboxes (deny-by-default egress)"]
+        scout["🔍 Scout · logs<br/>Loki"]
+        gauge["📈 Gauge · metrics<br/>Thanos"]
+        trace["🧵 Trace · traces<br/>Tempo"]
+        probe["📋 Probe · events<br/>Loki event stream"]
+    end
+    sage["🧠 Sage · analyst<br/>no tools, no egress"]
+    human["🧑‍💻 Human review<br/>approves the fix"]
+    ok["✅ error rate back to 0%"]
+    outage --> scout & gauge & trace & probe
+    scout & gauge & trace & probe --> sage
+    sage -->|"root cause + RECOMMENDED_ACTION"| human
+    human -->|"scale payments back up"| ok
+```
+
+| Agent | Reads only | What it finds |
+|---|---|---|
+| **Scout** (logs) | Loki gateway | `checkout failed: payment call failed: ECONNREFUSED` |
+| **Gauge** (metrics) | Thanos Querier, tenancy port | 5xx spike, success rate down to 0% |
+| **Trace** (traces) | Tempo gateway | failing `charge-payment` span, peer `payments` |
+| **Probe** (events) | Loki (event-exporter stream) | `payments` pod deleted, scaled to 0 |
+| **Sage** (analyst) | nothing | root cause and the fix to apply |
+
+**Outcome:** the analyst names the dependency outage and recommends scaling `payments` back up; the human applies it and the error rate returns to zero. The agents only **read** telemetry and never touch the cluster. A fixed orchestrator (no LLM planning step) streams a live timeline of every agent to the browser.
 
 ![Fleet orchestration flow](docs/fleet-orchestration.png)
 
-| Agent | Backend | What it finds |
-|-------|---------|---------------|
-| **Scout** (logs) | Loki Operator gateway | `"checkout failed: payment call failed"` |
-| **Gauge** (metrics) | Thanos Querier (tenancy port) | 5xx spike, request success rate drops to 0% |
-| **Trace** (traces) | Tempo gateway | Failing `charge-payment` span in error traces |
-| **Probe** (events) | Loki Operator gateway (event-exporter stream) | `payments scaled to 0` Kubernetes event |
-| **Sage** (analyst) | None (zero egress) | Combines all findings into a root cause and a fix |
-
-Each specialist can reach only its assigned telemetry backend. It cannot touch the cluster API, other backends, or the internet, and its telemetry token reads only its own instance's namespaces. The analyst has no tools and no egress at all; it only reasons over the other agents' findings. A fixed orchestrator (no LLM "planning" step) sends one prescribed probe to each specialist, collects the results, and hands them to the analyst.
-
-**Outcome:** The analyst concludes that the root cause is a dependency outage (`payments` scaled to zero) and recommends `kubectl scale deploy/payments --replicas=1`. The human reviews, approves, and applies the fix, and the error rate drops to zero. The agents never modify the cluster; they only read telemetry.
-
-The instrumented workload produces all three signal types (metrics, logs, traces). Each specialist agent reads exactly one backend:
-
-![Demo architecture](docs/demo-architecture.png)
-
-This project deploys the full stack needed to run this scenario on an existing OpenShift cluster:
-
-- **OpenShell gateway** (0.1.6): the agent control plane. It manages sandboxed agent pods through the `agent-sandbox` CRD (v1.0.3, `agents.x-k8s.io/v1beta1`).
-- **OpenClaw agents**: sandboxed AI agents governed by deny-by-default network and API policies. They run under the default `restricted-v2` SCC, with no privileged access.
-- **Observability stack**: OpenShift operator-based monitoring (Prometheus/Thanos Querier, Loki Operator, Tempo Operator, OTEL Collector), plus standalone Grafana for dashboards.
-- **Interactive workshop website**: a Next.js app with 30 guided lessons and a live in-browser terminal that walks you through building the entire system from scratch.
-- **Optional self-hosted inference** (`scripts/maas.sh`): NVIDIA Nemotron 3 Nano on a cluster GPU, served by llm-d/vLLM, with per-attendee API keys and token rate limits.
-
-The agents never hold the real inference key. A sandbox sees only a placeholder `$OPENAI_API_KEY`, and the OpenShell supervisor swaps in the real key when the request leaves the sandbox for the inference endpoint.
-
-### Architecture Diagram
+## 🏗️ Architecture
 
 ![Stack diagram](docs/stack-diagram.png)
+
+**Lab mode** keeps what must be private per attendee and shares everything else:
+
+```mermaid
+flowchart TB
+    subgraph attendees["One namespace pair per attendee"]
+        direction LR
+        subgraph a1["user01"]
+            o1["user01-openshell<br/>gateway · workshop · registry · agents"]
+            d1["user01-demo<br/>shop app"]
+        end
+        subgraph aN["user02 … userNN"]
+            oN["userNN-openshell"]
+            dN["userNN-demo"]
+        end
+    end
+    subgraph shared["Shared, deployed once"]
+        maas["🧠 Nemotron 3 Nano on GPU<br/>OpenShift AI MaaS"]
+        obs["📊 Observability<br/>Thanos · Loki · Tempo · OTEL · RustFS"]
+        ctrl["agent-sandbox controller<br/>(v1beta1)"]
+        graf["Grafana<br/>(anonymous Viewer)"]
+    end
+    attendees -.->|own API key| maas
+    attendees -.->|namespace-scoped token| obs
+```
+
+<details>
+<summary><b>Full component tree</b></summary>
 
 ```
 OpenShift cluster (4.19+, tested on 4.22.18)
@@ -111,12 +161,111 @@ OpenShift cluster (4.19+, tested on 4.22.18)
             → https://maas.<apps-domain>/maas-models/nemotron-3-nano/v1   (API keys sk-oai-…)
 ```
 
-### Workshop Curriculum
+</details>
 
-The workshop is organized into seven parts with 30 lessons:
+## 🔐 Security model
+
+Agents run under a **deny-by-default policy at two layers**: Kubernetes NetworkPolicies (L4) and the OpenShell supervisor proxy (L7, per binary, host, method and path). The inference key never enters a sandbox:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as 🤖 Agent (OpenClaw)
+    participant P as 🛡️ Sandbox proxy
+    participant G as OpenShell gateway
+    participant M as 🧠 Model endpoint
+    G->>P: provider credentials (the real key stays outside the agent)
+    Note over A: $OPENAI_API_KEY holds only a placeholder
+    A->>P: POST /v1/chat/completions (Bearer placeholder)
+    P->>P: policy check: host, port, path, binary
+    P->>M: same request, real key swapped in
+    M-->>A: completion
+```
+
+- Each specialist reaches **one** telemetry backend with a 24h token scoped to its own namespaces. It cannot reach the cluster API, the other backends or the internet.
+- The analyst has **no tools and no egress**.
+- In lab mode, attendees act only through their workshop terminal: no cluster-wide exec, no access to other attendees' namespaces, default-deny ingress, quotas, and a per-attendee access token on the website.
+
+![Security layers](docs/security-layers.png)
+
+## 🚀 Quick start
+
+> **Prerequisites:** an OpenShift 4.19+ cluster with `cluster-admin`, plus `oc`, `helm` 3.17+ (3.18+ recommended), `yq`, `jq`, `envsubst`, `openssl` and `curl`.
+
+**1. Pick an inference source**
+
+| | Remote endpoint | Self-hosted on the cluster |
+|---|---|---|
+| What | Any OpenAI-compatible API (NVIDIA NIM, OpenAI, vLLM…) | NVIDIA Nemotron 3 Nano 30B-A3B FP8 on OpenShift AI MaaS |
+| GPU | none | 1× 48 GB GPU per replica (AWS `g6e.2xlarge`) |
+| Setup | three lines in `.env` | `scripts/maas.sh up` (~30–45 min), then `maas.sh keys` / `maas.sh env` |
+
+**2. Build the workshop image** from this revision (the chart default predates it). See [Deploy in detail](#-deploy-in-detail).
+
+**3. Deploy**
+
+```bash
+cp .env.example .env                 # WORKSHOP_IMAGE + inference settings
+
+# One instance (namespaces openshell + demo)
+./scripts/deploy.sh
+
+# …or a hands-on lab for 30 attendees on the same cluster
+scripts/lab.sh up 30 -P 5
+scripts/lab-smoke.sh                 # health of every attendee
+scripts/lab.sh urls --csv            # one row per attendee: workshop URL, OpenClaw UI, Grafana
+```
+
+**4. Open the workshop.** Single instance: `https://workshop-openshell.<apps-domain>/`. Lab: each attendee gets their own row of `.lab/attendees.csv`.
+
+## 👥 Run it as a hands-on lab
+
+`scripts/lab.sh up <N>` deploys attendees `user01` … `userNN`, each with a namespace pair:
+
+- **`userNN-openshell`**: their own OpenShell gateway, skill registry, workshop and terminal, event-exporter, `telemetry-reader` ServiceAccount, and agents.
+- **`userNN-demo`**: their own shop app, which the Incident Lab breaks and fixes.
+
+**Why one namespace pair per attendee on one cluster:** one observability stack, one GPU pool and one place to watch, while each attendee has their own gateway, so providers, policies and agent names never collide. An incident one attendee triggers is invisible to the others (Thanos tenancy port, Loki and Tempo filtered by namespace).
+
+```bash
+scripts/maas.sh up                   # optional: self-hosted Nemotron (~30-45 min)
+scripts/maas.sh keys 30              # one API key per attendee -> .lab/maas-keys.csv
+scripts/maas.sh env                  # values for .env; set LAB_INFERENCE_KEYS_FILE="$PWD/.lab/maas-keys.csv"
+scripts/lab.sh up 30 -P 5            # shared components + user01..user30, 5 in parallel
+scripts/lab.sh fleet -P 3            # optional: pre-provision every attendee's 5-agent fleet
+scripts/lab.sh urls --csv            # .lab/attendees.csv (the URL contains the attendee's access token)
+```
+
+| Day-2 operation | Command |
+|---|---|
+| Status of every attendee | `scripts/lab.sh status` · `scripts/lab-smoke.sh` |
+| Repair one attendee (URL and password unchanged) | `scripts/lab.sh user user07` |
+| After a cluster stop/start | `scripts/maas.sh up` then `scripts/lab.sh wake` |
+| Push a new model key or endpoint | `LAB_INFERENCE_UPDATE=1 scripts/lab.sh up N` (then attendees restart their OpenClaw gateway) |
+| Tear down | `scripts/lab.sh down all [--shared]` · `scripts/maas.sh down` |
+
+Sizing, capacity planning and troubleshooting are in the **[Administrator Guide](docs/ADMIN-GUIDE.md)**; attendees get the **[Attendee Guide](docs/USER-GUIDE.md)**.
+
+## ✅ Validated on OpenShift 4.22
+
+Tested on OpenShift 4.22.18 (AWS), with Nemotron 3 Nano served by 1× NVIDIA L40S:
+
+| Test | Result |
+|---|---|
+| Full lesson flow, Playwright, fresh attendee | ✅ 112 / 113. The last failure is fixed, and the lesson re-run passes 3/3. |
+| Read-only lessons + isolation between attendees | ✅ 97 passed, 0 failed |
+| Incident Lab, several rounds | ✅ right root cause and fix every time, ~30–40 s, other attendees unaffected |
+| Investigation of a healthy app | ✅ reported healthy, no invented fault (15–17 s) |
+| Load test: 9 attendees, 9 simultaneous investigations | ✅ 61 s, 9/9 correct diagnoses, 9/9 healed |
+| Model key rotation | ✅ agents keep working |
+| Real cluster stop/start | ✅ `maas.sh up` + `lab.sh wake` restore everything |
+
+The full findings, decisions and test logs are in **[README-DEPLOYMENT-REVIEW.md](README-DEPLOYMENT-REVIEW.md)**.
+
+## 🎓 Workshop curriculum
 
 | Part | Topic | Lessons |
-|------|-------|---------|
+|---|---|---|
 | **I. Welcome** | The event, the platform, what you need | 2 |
 | **II. What's Already Running** | Inspect the deployed stack with `oc` | 4 |
 | **III. How OpenShell Works** | Control plane, policies, sandbox lifecycle | 2 |
@@ -125,219 +274,146 @@ The workshop is organized into seven parts with 30 lessons:
 | **VI. Build Something Useful** | Capstone: multi-agent SRE copilot fleet | 6 |
 | **VII. Reference** | Live views, observability, troubleshooting | 4 |
 
-Most lessons include a live in-browser terminal connected to the cluster for hands-on exercises. The lessons use `$OPENSHELL_NS` and `$DEMO_NS`, so the same content works in single-instance mode (`openshell` / `demo`) and in lab mode (`userNN-openshell` / `userNN-demo`).
+The lessons use `$OPENSHELL_NS` and `$DEMO_NS`, so the same content works for a single instance (`openshell` / `demo`) and in lab mode (`userNN-openshell` / `userNN-demo`).
 
-## Run it as a multi-attendee lab
+## 📋 Requirements
 
-`scripts/lab.sh up <N>` deploys N attendees (`user01` … `userNN`) on **one** OpenShift cluster. Each attendee gets a namespace pair:
+| | Single instance | Lab mode (measured) |
+|---|---|---|
+| Nodes | 2 workers, 4 vCPU / 16 GiB each | ~0.75 vCPU / 3 GiB of requests per attendee |
+| Storage | default StorageClass, 2 GiB per sandbox | ~8 volumes per attendee: on AWS the EBS limit (~26 per node) binds first, so plan **10+ lab nodes for 30 attendees** |
+| GPU | none (remote endpoint) | optional: 1× 48 GB GPU per model replica; 2 replicas for 30 attendees |
 
-- **`userNN-openshell`**: their own OpenShell gateway, Verdaccio skill registry, workshop web app and terminal, event-exporter, `telemetry-reader` ServiceAccount, and sandboxes (agents).
-- **`userNN-demo`**: their own demo shop app, which the Incident Lab breaks and fixes.
+| Software | Version | Notes |
+|---|---|---|
+| Red Hat OpenShift | 4.19+ | OpenShell 0.1.x needs Landlock + nested seccomp. Tested on 4.22.18. `cluster-admin`. |
+| `oc` | matching the cluster | logged in |
+| `helm` | 3.17+ (3.18+ recommended) | CI uses v3.22.1 |
+| `yq`, `jq`, `envsubst`, `openssl`, `curl` | any | used by the scripts |
+| `podman` | any | only to build images locally |
+| Inference | — | OpenAI-compatible `/v1/chat/completions` with a publicly trusted certificate (or plain http), **or** a GPU for `scripts/maas.sh` |
 
-The observability stack, the agent-sandbox controller, Grafana (anonymous Viewer), the image prepull DaemonSet (`lab-shared`), and the optional self-hosted model are deployed **once** and shared.
-
-**Why one namespace pair per attendee on a shared cluster:**
-
-- **Cost and operations:** one cluster, one observability stack, one GPU pool, and one place to watch.
-- **Isolation where it matters:** each attendee has their own gateway, so providers, policies and sandbox names (`shifty`, `lab`, the fleet roles) never collide. An incident one attendee triggers is invisible to the others, because telemetry is scoped per namespace (Thanos tenancy port 9092, Loki and Tempo filtered by namespace).
-- **Least privilege:** attendees act only through their workshop terminal. Its ServiceAccount can read its own namespaces, manage its own demo app, and read a few platform namespaces. It has no cluster-wide exec and cannot read other attendees' namespaces. NetworkPolicies (default-deny ingress), a LimitRange and a ResourceQuota fence each namespace, and each workshop sits behind its own access token.
-- **Single-instance mode is unchanged:** `scripts/deploy.sh` still deploys one copy in `openshell` + `demo`.
-
-Quick start (details, sizing and troubleshooting are in the [Administrator Guide](docs/ADMIN-GUIDE.md)):
-
-```bash
-cp .env.example .env              # set WORKSHOP_IMAGE (see "Build the workshop image")
-scripts/maas.sh up                # optional: self-hosted Nemotron on a GPU node (~30-45 min)
-scripts/maas.sh keys 30           # one MaaS API key per attendee -> .lab/maas-keys.csv
-scripts/maas.sh env               # NEMOCLAW_INFERENCE_BASE_URL / NEMOCLAW_MODEL for .env;
-                                  # also set LAB_INFERENCE_KEYS_FILE="$PWD/.lab/maas-keys.csv"
-scripts/lab.sh up 30 -P 5         # shared components + user01..user30, 5 in parallel
-scripts/lab-smoke.sh              # per-attendee health checks
-scripts/lab.sh urls --csv         # .lab/attendees.csv: workshop URL (with token), OpenClaw UI + password, Grafana
-```
-
-Give each attendee **only their own row** of `.lab/attendees.csv`, because the URL contains their access token. The [Attendee Guide](docs/USER-GUIDE.md) explains what they receive, how to use the workshop, and the shared-cluster rules.
-
-## Requirements
-
-### Minimum hardware requirements
-
-**Single instance:**
-- 2 worker nodes (or 3+ control-plane nodes with scheduling enabled)
-- 4 vCPU / 16 GiB memory per worker (for the observability stack + OpenShell + workshop)
-- A default StorageClass: every sandbox gets a 2 GiB workspace volume
-
-**Lab mode (measured):**
-- Per attendee: about 0.75 vCPU / 3 GiB of requests, about 14 pods (+1 supervisor pod per sandbox), and about 8 volumes
-- 30 attendees fit on 3 × m5a.8xlarge for CPU and memory. On AWS the EBS attachment limit (about 26 per node) is the binding constraint, so plan at least 10 lab nodes for 30 attendees. See [ADMIN-GUIDE §8](docs/ADMIN-GUIDE.md#8-capacity-planning-aws).
-
-**GPU: optional.** Only needed for self-hosted inference. You need one NVIDIA GPU with at least 48 GB per model replica (for example L40S, RTX PRO 6000, H100). On AWS, `scripts/maas.sh` creates a `g6e.2xlarge` (1× L40S) MachineSet. Use two replicas for 30 attendees. With a remote OpenAI-compatible endpoint, no GPU is needed.
-
-### Minimum software requirements
-
-| Requirement | Version | Notes |
-|-------------|---------|-------|
-| Red Hat OpenShift | 4.19 or later | OpenShell 0.1.x needs Landlock + nested seccomp. Tested on 4.22.18. `cluster-admin` access. |
-| `oc` CLI | Matching cluster version | Logged in (`oc login`) |
-| `helm` CLI | 3.17 or later (3.18+ recommended) | CI uses v3.22.1; the preflight warns below 3.18 |
-| `yq`, `jq`, `envsubst`, `openssl`, `curl` | Any | Used by the deploy, lab and operator scripts |
-| `podman` | Any | Only to build images locally |
-| Inference | — | An OpenAI-compatible endpoint (`/v1/chat/completions`) with a publicly trusted certificate or plain http, **or** a GPU for `scripts/maas.sh` |
-
-### Why cluster-admin access is required
-
-The deployment creates several cluster-scoped resources that only a `cluster-admin` can manage:
+<details>
+<summary><b>Why cluster-admin is required</b></summary>
 
 | Category | Resource | Why it's needed |
-|----------|----------|-----------------|
-| **CRDs** | `sandboxes.agents.x-k8s.io` (agent-sandbox v1.0.3, `v1beta1`) | The OpenShell gateway's Kubernetes driver manages sandbox pods through this CRD. `ensure_agent_sandbox` reuses an OLM-managed CRD that serves `v1beta1` and never replaces an operator's CRD. |
-| **Operators** | 5 OLM Subscriptions (Cluster Observability, OpenTelemetry, Tempo, Logging, Loki) | Provide the observability stack. Each operator creates its own CRDs and controllers. |
+|---|---|---|
+| **CRDs** | `sandboxes.agents.x-k8s.io` (agent-sandbox v1.0.3, `v1beta1`) | The gateway's Kubernetes driver manages sandbox pods through this CRD. `ensure_agent_sandbox` reuses an OLM-managed CRD that serves `v1beta1` and never replaces an operator's CRD. |
+| **Operators** | 5 OLM Subscriptions (Cluster Observability, OpenTelemetry, Tempo, Logging, Loki) | Provide the observability stack. |
 | **Operators (optional)** | NFD, NVIDIA GPU Operator, OpenShift AI, Red Hat Connectivity Link, LeaderWorkerSet | Self-hosted inference (`scripts/maas.sh`) |
 | **Machine API (optional)** | GPU MachineSet in `openshift-machine-api` | Cloned from a worker MachineSet by `scripts/maas.sh` |
-| **Namespaces** | `openshell`, `demo`, `monitoring`, `observability-hub` (lab: `userNN-openshell`, `userNN-demo`, `lab-shared`) | Created out-of-band (not Helm-managed), so `helm uninstall` does not delete them along with the non-Helm resources inside. |
-| **Cluster config** | `cluster-monitoring-config` ConfigMap in `openshift-monitoring` | Enables User Workload Monitoring. The script merges `enableUserWorkload: true` into any existing config, and the UWM Alertmanager is opt-in. |
-| **ClusterRoles** | `<namespace>-workshop` | Read-only access to nodes, SCCs and CRDs for the workshop lessons. Everything else is namespaced: `view` + a Role in its own namespace, write access to the demo namespace, read access to a few platform namespaces, and `pods/exec` only in single-instance mode. |
-| **ClusterRoles** | `<namespace>-telemetry-reader` | Bound with RoleBindings **only** in the instance's two namespaces. The fleet agents' 24h token comes from this ServiceAccount. |
-| **ClusterRoleBindings** | `*-monitoring-view`, `*-grafana-monitoring-view`, `*-monitoring-reader-view`, `*-loki-tenant` | Let Grafana and the shared `monitoring-reader` query Thanos Querier, the Loki gateway and the Tempo gateway. |
-| **ClusterRoles** | `openshell-node-reader-<namespace>` (upstream chart) | Lets the gateway create `TokenReview`s (sandbox bootstrap) and read cluster-scoped scheduling objects. Unique per release namespace. |
-| **SCC grants** | `nonroot-v2` SCC → `grafana` SA | Grafana runs as UID 472. **No privileged SCC**: the gateway and the sandboxes run under `restricted-v2`. |
+| **Namespaces** | `openshell`, `demo`, `monitoring`, `observability-hub` (lab: `userNN-openshell`, `userNN-demo`, `lab-shared`) | Created out-of-band, so `helm uninstall` does not delete them with non-Helm resources inside. |
+| **Cluster config** | `cluster-monitoring-config` in `openshift-monitoring` | Enables User Workload Monitoring; merged into any existing config, Alertmanager opt-in. |
+| **ClusterRoles** | `<namespace>-workshop` | Read-only access to nodes, SCCs and CRDs for the lessons; everything else is namespaced, and `pods/exec` is granted only in single-instance mode. |
+| **ClusterRoles** | `<namespace>-telemetry-reader` | Bound **only** in the instance's two namespaces; the fleet agents' token comes from this ServiceAccount. |
+| **ClusterRoleBindings** | `*-monitoring-view`, `*-grafana-monitoring-view`, `*-monitoring-reader-view`, `*-loki-tenant` | Let Grafana and the shared `monitoring-reader` query Thanos, Loki and Tempo. |
+| **ClusterRoles** | `openshell-node-reader-<namespace>` (upstream chart) | TokenReviews for sandbox bootstrap and cluster-scoped scheduling reads. |
+| **SCC grants** | `nonroot-v2` → `grafana` SA | Grafana runs as UID 472. **No privileged SCC**: the gateway and the sandboxes run under `restricted-v2`. |
 
-**Cluster config read:** the scripts also read the cluster-scoped `ingresses.config/cluster` resource to detect the `*.apps` domain for Route hostnames. To skip this, set `CLUSTER_APPS_DOMAIN` in `.env`.
+The scripts also read `ingresses.config/cluster` to detect the `*.apps` domain; set `CLUSTER_APPS_DOMAIN` in `.env` to skip it.
 
-## Deploy
+</details>
 
-### Prerequisites
+## 🛠️ Deploy in detail
 
-Before deploying, make sure you have:
+**1. Build the workshop image.** The chart default (`quay.io/mmurakam/nemoclaw-workshop:v0.2.9`) predates this version. Build it from `web/Dockerfile` and set `WORKSHOP_IMAGE`.
 
-1. Access to a Red Hat OpenShift 4.19+ cluster with `cluster-admin` privileges
-2. `oc` CLI installed and logged in to the cluster (`oc login https://api.<cluster-domain>:6443`)
-3. `helm` (3.17+, 3.18+ recommended), `yq`, `jq`, `envsubst`, `openssl` and `curl` installed
-4. An inference source: an OpenAI-compatible endpoint (e.g. [NVIDIA NIM](https://build.nvidia.com/), OpenAI, Azure OpenAI, vLLM) **or** a GPU node for the self-hosted model
+In the cluster, with no local container runtime:
 
-### Deployment
+```bash
+oc new-project lab-build
+oc -n lab-build new-build --name nemoclaw-workshop --binary --strategy docker --to nemoclaw-workshop:dev
+oc -n lab-build patch bc nemoclaw-workshop --type merge \
+   -p '{"spec":{"strategy":{"dockerStrategy":{"dockerfilePath":"web/Dockerfile"}}}}'
+oc -n lab-build start-build nemoclaw-workshop --from-dir=. --follow
+oc policy add-role-to-group system:image-puller system:serviceaccounts -n lab-build
+# WORKSHOP_IMAGE=image-registry.openshift-image-registry.svc:5000/lab-build/nemoclaw-workshop:dev
+```
 
-1. **Clone the repository and navigate to its root folder.**
+Or with podman, pushed to a registry the cluster can pull from:
 
-2. **Build the workshop image.** The chart default (`quay.io/mmurakam/nemoclaw-workshop:v0.2.9`) predates this version. Build the image from this revision (`web/Dockerfile`) and point `WORKSHOP_IMAGE` at it.
+```bash
+podman build --platform linux/amd64 -f web/Dockerfile -t quay.io/<org>/nemoclaw-workshop:<tag> .
+podman push quay.io/<org>/nemoclaw-workshop:<tag>
+```
 
-   In the cluster (no local container runtime needed):
+**2. Configure `.env`** (`cp .env.example .env`) with the image and **one** inference source.
 
-   ```bash
-   oc new-project lab-build
-   oc -n lab-build new-build --name nemoclaw-workshop --binary --strategy docker --to nemoclaw-workshop:dev
-   oc -n lab-build patch bc nemoclaw-workshop --type merge \
-      -p '{"spec":{"strategy":{"dockerStrategy":{"dockerfilePath":"web/Dockerfile"}}}}'
-   oc -n lab-build start-build nemoclaw-workshop --from-dir=. --follow
-   oc policy add-role-to-group system:image-puller system:serviceaccounts -n lab-build
-   # WORKSHOP_IMAGE=image-registry.openshift-image-registry.svc:5000/lab-build/nemoclaw-workshop:dev
-   ```
+*Option A: a remote OpenAI-compatible endpoint*
 
-   Or with podman, then push to a registry the cluster can pull from:
+```bash
+WORKSHOP_IMAGE="quay.io/<org>/nemoclaw-workshop:<tag>"
+NEMOCLAW_INFERENCE_BASE_URL="https://<inference-host>/v1"   # publicly trusted TLS, or plain http in-cluster
+NEMOCLAW_MODEL="<model-id>"
+NEMOCLAW_API_KEY="<your-api-key>"
+```
 
-   ```bash
-   podman build --platform linux/amd64 -f web/Dockerfile -t quay.io/<org>/nemoclaw-workshop:<tag> .
-   podman push quay.io/<org>/nemoclaw-workshop:<tag>
-   ```
+*Option B: self-hosted Nemotron 3 Nano on the cluster's GPU*
 
-3. **Configure your environment:**
+```bash
+scripts/maas.sh up        # NFD, GPU Operator, OpenShift AI 3.5, Connectivity Link, GPU node, model
+scripts/maas.sh status
+scripts/maas.sh keys 1    # mints an API key (sk-oai-…) -> .lab/maas-keys.csv (mode 600, gitignored)
+scripts/maas.sh smoke     # chat completion + tool call through the MaaS gateway
+scripts/maas.sh env       # prints the values below
+```
 
-   ```bash
-   cp .env.example .env
-   ```
+```bash
+NEMOCLAW_INFERENCE_BASE_URL="https://maas.<apps-domain>/maas-models/nemotron-3-nano/v1"
+NEMOCLAW_MODEL="nemotron-3-nano"
+NEMOCLAW_API_KEY="<key from .lab/maas-keys.csv>"   # lab mode: LAB_INFERENCE_KEYS_FILE instead
+```
 
-   Then fill in the workshop image and **one** inference source.
+The sandbox proxy swaps in the real key only over plain http or TLS it can verify, which is why the MaaS gateway reuses the cluster's default ingress certificate (it must be publicly trusted).
 
-   **Option A: a remote OpenAI-compatible endpoint**
+**3. Deploy.** `./scripts/deploy.sh` (single instance) does the following:
 
-   ```bash
-   WORKSHOP_IMAGE="quay.io/<org>/nemoclaw-workshop:<tag>"
-   NEMOCLAW_INFERENCE_BASE_URL="https://<inference-host>/v1"   # publicly trusted TLS, or plain http in-cluster
-   NEMOCLAW_MODEL="<model-id>"
-   NEMOCLAW_API_KEY="<your-api-key>"
-   ```
+- runs the preflight checks (login, CLI tools, inference settings);
+- deploys the observability stack (5 operators, UWM, RustFS, TempoStack, LokiStack, OTEL Collector) and waits for it, unless `SKIP_OBSERVABILITY=true`;
+- creates the namespaces out-of-band and refuses to install over an OpenShell gateway it does not own;
+- ensures agent-sandbox v1.0.3: it reuses a compatible install, never touches an OLM-owned CRD, and stops on a `v1alpha1`-only CRD unless `AGENT_SANDBOX_MIGRATE=1`;
+- installs the **openshell + workshop** release (`nemoclaw`); the inference settings go into a Secret, never into Helm values;
+- registers the inference provider on the gateway (profile `maas-openai` + `openshell provider create`);
+- installs the **monitoring** release (Grafana + event-exporter);
+- applies the demo app and brings up the 5-agent fleet (`DEPLOY_DEMO_APP=false` / `DEPLOY_FLEET=false` to skip).
 
-   **Option B: self-hosted Nemotron 3 Nano on the cluster's GPU**
+For lab mode, use `scripts/lab.sh up N` instead (see [Run it as a hands-on lab](#-run-it-as-a-hands-on-lab)).
 
-   ```bash
-   scripts/maas.sh up        # NFD, GPU Operator, OpenShift AI 3.5, Connectivity Link, GPU node, model
-   scripts/maas.sh status
-   scripts/maas.sh keys 1    # mints an API key (sk-oai-…) -> .lab/maas-keys.csv (mode 600, gitignored)
-   scripts/maas.sh smoke     # chat completion + tool call through the MaaS gateway
-   scripts/maas.sh env       # prints the values below
-   ```
+**4. Open it:**
 
-   ```bash
-   NEMOCLAW_INFERENCE_BASE_URL="https://maas.<apps-domain>/maas-models/nemotron-3-nano/v1"
-   NEMOCLAW_MODEL="nemotron-3-nano"
-   NEMOCLAW_API_KEY="<key from .lab/maas-keys.csv>"   # lab mode: LAB_INFERENCE_KEYS_FILE instead
-   ```
+```bash
+DOMAIN="$(oc get ingresses.config/cluster -o jsonpath='{.spec.domain}')"
+echo "Workshop:  https://workshop-openshell.${DOMAIN}/"
+echo "Grafana:   https://grafana-monitoring.${DOMAIN}/grafana"
+```
 
-   The OpenShell proxy swaps in the real key only over plain http or TLS it can verify. That is why the MaaS gateway reuses the cluster's default ingress certificate, which must be publicly trusted.
-
-4. **Deploy.** Choose one mode.
-
-   **Single instance** (one copy per cluster, namespaces `openshell` + `demo`):
-
-   ```bash
-   ./scripts/deploy.sh
-   ```
-
-   The script:
-   - Runs preflight checks (login, CLI tools, inference settings)
-   - Deploys the observability stack (5 operators, UWM, RustFS object storage, TempoStack, LokiStack, OTEL Collector, waits for TempoStack/LokiStack Ready), unless `SKIP_OBSERVABILITY=true`
-   - Creates the `openshell`, `demo` and `monitoring` namespaces out-of-band, and refuses to install over an OpenShell gateway it does not own
-   - Ensures agent-sandbox v1.0.3 (`ensure_agent_sandbox`). It reuses a compatible install, including an OLM-managed CRD that serves `v1beta1`, and never touches an OLM-owned CRD. It stops on a `v1alpha1`-only CRD unless `AGENT_SANDBOX_MIGRATE=1`.
-   - Builds the chart dependencies and installs the **openshell + workshop** release (`nemoclaw`) in `openshell`. The inference settings go into a Secret, never into Helm values.
-   - Registers the inference provider on the gateway: provider profile `maas-openai` + `openshell provider create --type maas-openai`
-   - Installs the **monitoring** release (Grafana + event-exporter) in `monitoring`
-   - Applies the demo app to `demo` and brings up the 5-agent fleet from inside the workshop pod (turn these off with `DEPLOY_DEMO_APP=false` / `DEPLOY_FLEET=false`)
-
-   **Lab mode** (N attendees on one cluster):
-
-   ```bash
-   scripts/lab.sh up 30 -P 5
-   ```
-
-   See [Run it as a multi-attendee lab](#run-it-as-a-multi-attendee-lab) and the [Administrator Guide](docs/ADMIN-GUIDE.md).
-
-5. **Access the workshop (single instance):**
-
-   ```bash
-   DOMAIN="$(oc get ingresses.config/cluster -o jsonpath='{.spec.domain}')"
-   echo "Workshop:  https://workshop-openshell.${DOMAIN}/"
-   echo "Grafana:   https://grafana-monitoring.${DOMAIN}/grafana"
-   echo "Console:   https://console-openshift-console.${DOMAIN}/"
-   ```
-
-   Open the workshop URL in your browser and follow the guided lessons. In lab mode, each attendee gets `https://workshop-userNN-openshell.<apps-domain>/?token=…` from `scripts/lab.sh urls --csv`.
-
-### Configuration Options
+<details>
+<summary><b>Configuration options (<code>.env</code>)</b></summary>
 
 All configuration goes through `.env`, which `deploy.sh`, `lab.sh` and `maas.sh` source (see [`.env.example`](.env.example)). Never commit the filled-in `.env` or `.lab/`.
 
 **Common**
 
 | Variable | Default | Description |
-|----------|---------|-------------|
-| `CLUSTER_APPS_DOMAIN` | Auto-detected | The cluster's `*.apps` domain for Route hostnames |
-| `NEMOCLAW_INFERENCE_BASE_URL` | — | OpenAI-compatible base URL. Its host/port become the endpoint of the provider profile `maas-openai`. Blank = agents deploy without a model. |
+|---|---|---|
+| `CLUSTER_APPS_DOMAIN` | auto-detected | The cluster's `*.apps` domain for Route hostnames |
+| `NEMOCLAW_INFERENCE_BASE_URL` | — | OpenAI-compatible base URL; its host/port become the endpoint of the provider profile `maas-openai`. Blank = agents deploy without a model. |
 | `NEMOCLAW_MODEL` | — | Model ID served by the endpoint |
 | `NEMOCLAW_API_KEY` | — | Key for the endpoint (stored in a Secret, never in Helm values) |
 | `NEMOCLAW_INFERENCE_PROVIDER` | `default` | OpenShell provider name the sandboxes attach (`--provider`) |
 | `NEMOCLAW_INFERENCE_API` | `openai-completions` | OpenClaw provider API flavour |
-| `OPENCLAW_GATEWAY_PASSWORD` | `openclaw` | OpenClaw Control UI password (single instance; lab mode generates one per attendee) |
+| `OPENCLAW_GATEWAY_PASSWORD` | `openclaw` | OpenClaw Control UI password (lab mode generates one per attendee) |
 | `MONITORING_GRAFANA_PASSWORD` | `openclaw` (lab: generated) | Grafana admin password |
-| `GHCR_USER` / `GHCR_TOKEN` | Anonymous | GitHub PAT with `read:packages`. Creates Secret `ghcr-pull` to avoid ghcr.io throttling on the multi-GB sandbox image. |
-| `WORKSHOP_IMAGE` | Chart default | Workshop image built from this revision (`web/Dockerfile`) |
+| `GHCR_USER` / `GHCR_TOKEN` | anonymous | GitHub PAT with `read:packages`, avoids ghcr.io throttling on the multi-GB sandbox image |
+| `WORKSHOP_IMAGE` | chart default | Workshop image built from this revision |
 | `OPENCLAW_SANDBOX_IMAGE` | `ghcr.io/ansjindal/openclaw-sandbox:2026.8.2` | OpenClaw sandbox image (`images/openclaw-sandbox`) |
 | `AGENT_SANDBOX_VERSION` | `v1.0.3` | agent-sandbox release applied when none is installed |
-| `AGENT_SANDBOX_MIGRATE` | `0` | `1` replaces an old `v1alpha1`-only agent-sandbox install. **This deletes ALL Sandboxes cluster-wide.** |
+| `AGENT_SANDBOX_MIGRATE` | `0` | `1` replaces an old `v1alpha1`-only install. **Deletes ALL Sandboxes cluster-wide.** |
 
 **Single instance (`scripts/deploy.sh`)**
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+|---|---|---|
 | `OPENSHELL_NAMESPACE` | `openshell` | Gateway, registry, workshop, sandboxes |
 | `DEMO_NAMESPACE` | `demo` | Demo app (Incident Lab) |
 | `MONITORING_NAMESPACE` | `monitoring` | Grafana + event-exporter (shared in lab mode) |
@@ -350,10 +426,11 @@ All configuration goes through `.env`, which `deploy.sh`, `lab.sh` and `maas.sh`
 **Lab mode (`scripts/lab.sh`)**
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+|---|---|---|
 | `LAB_USER_PREFIX` | `user` | Attendees `user01` … `userNN` |
 | `LAB_NODE_SELECTOR` | `node-role.kubernetes.io/lab=` | Keeps lab pods on labelled workers; `none` = off; ignored when no node has the label |
-| `LAB_INFERENCE_KEYS_FILE` | — | CSV `user,key[,model[,base_url]]` with per-attendee keys (e.g. `.lab/maas-keys.csv`) |
+| `LAB_INFERENCE_KEYS_FILE` | — | CSV `user,key[,model[,base_url]]` with per-attendee keys |
+| `LAB_INFERENCE_UPDATE` | `0` | `1` re-pushes the key/endpoint to existing gateways (re-issues the agents' placeholders) |
 | `LAB_SKIP_OBSERVABILITY` | — | `1` = observability stack already deployed |
 | `LAB_DEMO_APP` | `true` | Deploy the demo app per attendee |
 | `LAB_HELM_TIMEOUT` | `15m` | Helm timeout per attendee |
@@ -362,10 +439,10 @@ All configuration goes through `.env`, which `deploy.sh`, `lab.sh` and `maas.sh`
 **Self-hosted inference (`scripts/maas.sh`)**
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+|---|---|---|
 | `MAAS_GPU_INSTANCE_TYPE` | `g6e.2xlarge` | GPU node type (1× L40S 48 GB; the FP8 model is 32.7 GB) |
 | `MAAS_GPU_REPLICAS` | `1` | GPU nodes = model replicas; 2 recommended for 30 attendees |
-| `MAAS_GPU_SOURCE_MACHINESET` | First worker MachineSet | MachineSet to clone for the GPU node |
+| `MAAS_GPU_SOURCE_MACHINESET` | first worker MachineSet | MachineSet to clone for the GPU node |
 | `MAAS_GPU_DISK_GB` | `200` | GPU node root disk |
 | `MAAS_TOKENS_PER_MINUTE` | `5000000` | `MaaSSubscription` token rate limit |
 | `MAAS_KEY_OWNER` | `oc whoami` | OpenShift user that mints the keys |
@@ -373,108 +450,78 @@ All configuration goes through `.env`, which `deploy.sh`, `lab.sh` and `maas.sh`
 **Notable chart values** (`chart/values.yaml`; lab overrides in `chart/values-lab.yaml`)
 
 | Value | Single | Lab | Description |
-|-------|--------|-----|-------------|
-| `openshell.route.enabled` | `false` | `false` | Public Route to the (unauthenticated) gateway. Keep it off; in-cluster callers use the Service. |
+|---|---|---|---|
+| `openshell.route.enabled` | `false` | `false` | Public Route to the (unauthenticated) gateway. Keep it off. |
 | `isolation.networkPolicies.enabled` | `false` | `true` | Default-deny ingress + same-namespace / router / monitoring allowances |
-| `isolation.limits.enabled` | `false` | `true` | LimitRange + ResourceQuota in both namespaces (`isolation.limits.quota.*`) |
+| `isolation.limits.enabled` | `false` | `true` | LimitRange + ResourceQuota in both namespaces |
 | `workshop.rbac.allowExec` | `true` | `false` | `pods/exec` for the workshop terminal |
 | `openshell.sandboxPrepull.enabled` | `true` | `false` | Per-release prepull Job (lab: shared DaemonSet in `lab-shared`) |
 | `global.demoNamespace` | `demo` | `userNN-demo` | Demo app namespace |
 
-### Validating the Deployment
+</details>
+
+<details>
+<summary><b>Validate the deployment</b></summary>
 
 Single instance:
 
 ```bash
-# All pods Running (each sandbox = pod default--<name> + pod os-supervisor-<id>)
-oc get pods -n openshell
-oc get pods -n monitoring
-oc get pods -n observability-hub
-oc get pods -n openshift-logging
-
-# Sandbox API: must list v1beta1
-oc get crd sandboxes.agents.x-k8s.io -o jsonpath='{.spec.versions[*].name}{"\n"}'
+oc get pods -n openshell             # each sandbox = pod default--<name> + pod os-supervisor-<id>
+for ns in monitoring observability-hub openshift-logging; do oc get pods -n "$ns"; done
+oc get crd sandboxes.agents.x-k8s.io -o jsonpath='{.spec.versions[*].name}{"\n"}'   # must list v1beta1
 
 DOMAIN="$(oc get ingresses.config/cluster -o jsonpath='{.spec.domain}')"
-
-# Workshop health (ungated endpoint)
 curl -sk -o /dev/null -w '%{http_code}\n' "https://workshop-openshell.${DOMAIN}/healthz"
-
-# Gateway readiness + version (through the workshop API)
-curl -sk "https://workshop-openshell.${DOMAIN}/api/openshell"
-
-# Sandboxes as the gateway sees them (openshell CLI baked into the workshop image)
+curl -sk "https://workshop-openshell.${DOMAIN}/api/openshell"     # gateway ready + version 0.1.6
 oc -n openshell exec deploy/workshop -c workshop -- openshell sandbox list
-```
-
-Expected output from `/api/openshell`:
-
-```json
-{"ok":true,"namespace":"openshell","gateway":{"ready":true,"version":"0.1.6"},"sandboxes":[...],"inference":...,"at":"..."}
 ```
 
 Lab mode:
 
 ```bash
-scripts/lab-smoke.sh        # per attendee: /healthz, /api/lab (with the access token), gateway Ready, demo app Ready
-scripts/lab.sh status   # lab.sh wake: restart sandboxes after a cluster stop/start       # one line per attendee: workshop, gateway, sandboxes, demo
-scripts/maas.sh status      # GPU nodes, OpenShift AI, model and MaaS readiness (self-hosted inference)
+scripts/lab-smoke.sh     # per attendee: /healthz, /api/lab (with the token), gateway Ready, demo app Ready
+scripts/lab.sh status    # one line per attendee: workshop, gateway, sandboxes, demo
+scripts/maas.sh status   # GPU nodes, OpenShift AI, model and MaaS readiness
 ```
 
-The Playwright suites in `web/tests/` also run against a live deployment: `e2e` (any instance) and `isolation` (lab mode, attendee A must not reach attendee B). See `web/playwright.config.ts`.
+The Playwright suites in `web/tests/` run against a live deployment: `e2e` (lessons and APIs; set `E2E_RUN_MUTATING=1` for the full lesson flow) and `isolation` (attendee A must not reach attendee B). See `web/playwright.config.ts`.
 
-### Provisioning the OpenClaw Agent
+</details>
 
-By default, `deploy.sh` brings up the 5-agent SRE fleet but not the `shifty` agent from Part IV. To provision `shifty`:
+<details>
+<summary><b>Provision the <code>shifty</code> agent ahead of time</b></summary>
 
-**Option A: auto-provision during deploy**
-```bash
-PROVISION_AGENT=true ./scripts/deploy.sh
-```
-
-**Option B: provision after deploy** (runs inside the workshop pod, which has the `openshell` CLI and reaches the gateway in-cluster)
-```bash
-./scripts/45-openclaw.sh
-```
-
-**Option C: follow the workshop.** Part IV walks you through creating the agent step by step from the in-browser terminal.
-
-Every sandbox is created with `--policy` (without one it stays in `Provisioning`), `--provider` (inference), and `--detach -- sleep infinity` (keeps it Ready). Once the agent is provisioned, the OpenClaw Control UI is available at:
+By default `deploy.sh` brings up the 5-agent fleet but not `shifty`, the agent attendees build in Part IV.
 
 ```bash
-echo "https://openclaw-ui-openshell.$(oc get ingresses.config/cluster -o jsonpath='{.spec.domain}')/"
+PROVISION_AGENT=true ./scripts/deploy.sh   # during deploy
+./scripts/45-openclaw.sh                   # or afterwards (runs inside the workshop pod)
 ```
 
-In lab mode, `scripts/lab.sh fleet -P 3` pre-provisions every attendee's fleet.
+Every sandbox is created with `--policy` (without one it stays in `Provisioning`), `--provider` (inference) and `--detach -- sleep infinity`. OpenClaw configs keep the literal `${OPENAI_API_KEY}`: OpenShell 0.1.x re-issues the placeholder when a provider is updated, and OpenClaw substitutes the current one at start. In lab mode, `scripts/lab.sh fleet -P 3` pre-provisions every attendee's fleet.
 
-### Delete
+</details>
+
+## 🧹 Delete
 
 ```bash
 scripts/lab.sh down all            # lab: every attendee (sandboxes, releases, both namespaces)
 scripts/lab.sh down all --shared   # lab: + lab-shared and the shared Grafana release
 scripts/maas.sh down               # self-hosted inference: model + MaaS objects, GPU MachineSets scaled to 0
-./scripts/cleanup.sh               # single instance: sandboxes, Helm releases, demo app,
-                                   # observability releases, cluster-scoped RBAC, namespaces
+./scripts/cleanup.sh               # single instance: sandboxes, releases, demo app, observability, RBAC, namespaces
 ```
 
-> **Note:** these scripts do not remove the agent-sandbox CRD/controller or any operators (observability, GPU, OpenShift AI, Connectivity Link), because those are shared cluster resources. `maas.sh down` keeps the operators, OpenShift AI and PostgreSQL. See below for manual removal.
+These scripts keep shared cluster resources: the agent-sandbox CRD/controller and the operators (observability, GPU, OpenShift AI, Connectivity Link).
 
-**Remove the agent-sandbox CRD and controller (optional)**
+<details>
+<summary><b>Remove shared resources manually</b></summary>
 
-Only remove these if no other users or projects depend on them, and never when the CRD is managed by OLM (for example by OpenShift AI's agent-sandbox operator):
+Only if nothing else on the cluster depends on them, and never when the CRD is managed by OLM (for example by OpenShift AI's agent-sandbox operator):
 
 ```bash
 oc delete -f "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.3/sandbox.yaml" --ignore-not-found
-```
 
-**Remove the observability operators (optional)**
-
-Only remove these if no other projects on the cluster depend on them. Uninstall each operator with the operator manager script:
-
-```bash
-HERE="$(pwd)/scripts/lib"
-
-# Uninstall in reverse dependency order
+HERE="$(pwd)/scripts/lib"          # observability operators, reverse dependency order
 "$HERE/operator-manager.sh" -u otel -n openshift-opentelemetry-operator
 "$HERE/operator-manager.sh" -u tempo -n openshift-tempo-operator
 "$HERE/operator-manager.sh" -u logging -n openshift-logging
@@ -482,30 +529,23 @@ HERE="$(pwd)/scripts/lib"
 "$HERE/operator-manager.sh" -u observability -n openshift-cluster-observability-operator
 ```
 
-> **Note:** Operator uninstall preserves CRDs by design (OLM best practice). To fully remove operator CRDs, delete them manually with `oc delete crd <crd-name>`. Be aware that this cascade-deletes all custom resources of that type cluster-wide.
+Operator uninstall preserves CRDs by design; deleting a CRD cascade-deletes all its custom resources cluster-wide. The self-hosted inference operators can be removed from OperatorHub.
 
-The self-hosted inference operators (NFD, NVIDIA GPU Operator, OpenShift AI, Connectivity Link, LeaderWorkerSet) can be removed from OperatorHub if the cluster is reused for something else.
+</details>
 
-## Technical Details
+## 🧩 Technical details
 
-### Architecture
-
-**What this is (and isn't):** this stack is **OpenShell + OpenClaw on OpenShift**. NemoClaw is a reference layer (CLI + blueprint + policies) with no gateway of its own; the gateway *is* OpenShell's. The `nemoclaw` CLI is **not used** here. This repo deploys with Helm and the agent-sandbox CRD directly.
+**What this is (and isn't):** this stack is **OpenShell + OpenClaw on OpenShift**. NemoClaw is a reference layer (CLI + blueprint + policies) with no gateway of its own; the `nemoclaw` CLI is **not used** here. This repo deploys with Helm and the agent-sandbox CRD directly.
 
 | Gateway | Port | Role |
-|---------|------|------|
+|---|---|---|
 | **OpenShell gateway** | 8080 | Sandbox control plane (gRPC), plaintext, in-cluster Service only |
-| **OpenClaw gateway** | 30789 | Agent's own Control UI, inside the sandbox; exposed by the workshop's `openclaw-forward` sidecar (`openshell forward`) |
-
-The OpenClaw agent runs under a **deny-by-default policy** at two layers:
-- **L4 (network):** Kubernetes NetworkPolicies. The upstream chart restricts SSH ingress on sandbox pods to the gateway. In lab mode, `chart/templates/isolation.yaml` adds default-deny ingress per attendee namespace and keeps sandbox workload pods reachable only by their supervisor.
-- **L7 (application):** the OpenShell supervisor proxy enforces the per-binary/host/method/path policies in [`policies/`](policies/) and `manifests/openclaw/fleet-roles/*/policy.yaml`. It also swaps the inference-key placeholder for the real key, but only toward the provider profile's endpoint.
-
-![Security layers](docs/security-layers.png)
+| **OpenClaw gateway** | 30789 | The agent's own Control UI inside its sandbox, exposed by the workshop's `openclaw-forward` sidecar |
 
 ![Policy explorer](docs/policy-explorer.png)
 
-### Helm Chart Structure
+<details>
+<summary><b>Helm chart structure</b></summary>
 
 ```
 chart/
@@ -531,69 +571,77 @@ deploy/
                          # Kuadrant + LWS, gateways, PostgreSQL, Nemotron LLMInferenceService, MaaS access
 ```
 
-The observability backends are deployed separately from `deploy/observability/`, not as subcharts, because they target other namespaces (`observability-hub`, `openshift-logging`).
+The observability backends are deployed from `deploy/observability/`, not as subcharts, because they target other namespaces. The monitoring subchart is a **separate release** (`nemoclaw-monitoring`) so one Grafana serves every lab attendee.
 
-The monitoring subchart is a **separate Helm release** (`nemoclaw-monitoring`) in the `monitoring` namespace, so `{{ .Release.Namespace }}` resolves correctly for all monitoring resources and one Grafana serves every lab attendee.
+</details>
 
-### Key Design Decisions
+<details>
+<summary><b>Key design decisions</b></summary>
 
-- **Two modes, one chart.** Single-instance mode uses `chart/values.yaml` (namespaces `openshell` + `demo`). Lab mode layers `chart/values-lab.yaml` per attendee (`userNN-openshell` + `userNN-demo`). Every namespace derives from `.Release.Namespace` and `global.demoNamespace`.
-- **No privileged SCC.** OpenShell 0.1.x sandboxes and the gateway run under `restricted-v2` (Landlock + nested seccomp, hence OpenShift 4.19+). The old privileged SCC grant is gone.
-- **Helm nested-null fix.** Helm drops `null`s declared in an intermediate subchart's values when it coalesces a nested dependency. So `openshell.upstream.podSecurityContext.fsGroup: null` and `securityContext.runAsUser: null` **must** stay in the umbrella `chart/values.yaml`. Otherwise the upstream defaults (1000) leak through and `restricted-v2` rejects the pods.
-- **agent-sandbox applied out-of-band and guarded.** The CRD is cluster-scoped and must not be owned by a namespaced release. `ensure_agent_sandbox` reuses an OLM-managed CRD that serves `v1beta1` and refuses to replace an operator's CRD. It replaces an old `v1alpha1`-only install only with `AGENT_SANDBOX_MIGRATE=1`.
-- **Inference through a provider profile.** `inference.local` and `openshell inference set` were removed upstream. The profile `maas-openai` (`manifests/openclaw/inference-profile.yaml.tmpl`) and a provider created with `--credential OPENAI_API_KEY` keep the real key in the gateway. Sandboxes attach the provider with `--provider` and see only a placeholder.
-- **Gateway not exposed.** The gateway runs plaintext (`disableTls: true`) and does not authenticate callers, so its Route is off by default (`openshell.route.enabled`). Scripts drive it from inside the workshop pod. If you enable the Route, it uses edge TLS + `haproxy.router.openshift.io/enable-http2` for gRPC.
-- **FQDN registry host.** Sandbox policies reference the skill registry as `registry.<namespace>.svc.cluster.local`, because the OpenShell 0.1.6 proxy does not resolve single-label hosts. Policies ship with `registry.openshell.svc.cluster.local`, and the workshop entrypoint and `fleet.sh` rewrite the namespace at runtime.
-- **OpenShift operator-based monitoring.** Prometheus, Loki and Tempo are managed by Red Hat operators rather than bundled Helm charts.
-- **Namespace-scoped telemetry.** Grafana uses its own SA token (`$__file{}`). Fleet agents get a 24h token of the per-instance `telemetry-reader` SA: metrics come through the Thanos tenancy port 9092 (`?namespace=`), Loki is filtered on `kubernetes_namespace_name`, and Tempo on `k8s.namespace.name`.
-- **Namespaces created out-of-band.** `helm uninstall` deletes Helm-managed namespaces, which would destroy non-Helm resources in them.
-- **Demo app stays as Kustomize, namespace-agnostic.** The Incident Lab applies and deletes it with `kubectl -n "$DEMO_NAMESPACE" apply -k`, and Helm ownership of the same objects would conflict.
-- **`fullnameOverride` on subcharts.** Pins service names (e.g., `openshell`, `grafana`) so they stay stable regardless of the Helm release name.
+- **Two modes, one chart.** Single instance uses `chart/values.yaml` (`openshell` + `demo`); lab mode layers `chart/values-lab.yaml` per attendee. Every namespace derives from `.Release.Namespace` and `global.demoNamespace`.
+- **No privileged SCC.** OpenShell 0.1.x sandboxes and the gateway run under `restricted-v2` (Landlock + nested seccomp, hence OpenShift 4.19+).
+- **Helm nested-null fix.** Helm drops `null`s declared in an intermediate subchart, so `openshell.upstream.podSecurityContext.fsGroup: null` and `securityContext.runAsUser: null` **must** stay in the umbrella `chart/values.yaml`; otherwise `restricted-v2` rejects the gateway.
+- **agent-sandbox applied out-of-band and guarded.** The CRD is cluster-scoped and must not be owned by a namespaced release. An OLM-managed `v1beta1` CRD is reused, never replaced; an old `v1alpha1`-only install is replaced only with `AGENT_SANDBOX_MIGRATE=1`.
+- **Inference through a provider profile.** The profile `maas-openai` and a provider created with `--credential OPENAI_API_KEY` keep the real key in the gateway. Sandboxes attach it with `--provider` and see only a versioned placeholder; OpenClaw configs reference `${OPENAI_API_KEY}` so they survive a key rotation.
+- **Grounded orchestration.** A fixed plan sends one exact probe per specialist. A finding without the real tool output is replaced by a verified probe run inside the agent's own sandbox, and a deterministic evidence check reports a healthy app without asking the model. The streaming routes send a heartbeat because cloud load balancers drop connections idle for 60 s.
+- **Gateway not exposed.** The gateway is plaintext and unauthenticated, so its Route is off by default; scripts drive it from inside the workshop pod.
+- **FQDN registry host.** Policies reference `registry.<namespace>.svc.cluster.local`: the OpenShell 0.1.6 proxy does not resolve single-label hosts.
+- **Namespace-scoped telemetry.** Fleet agents get a 24h token of the per-instance `telemetry-reader` SA: Thanos tenancy port 9092 with `?namespace=`, Loki filtered on `kubernetes_namespace_name`, Tempo on `k8s.namespace.name`.
+- **Namespaces created out-of-band**, so `helm uninstall` cannot destroy non-Helm resources in them.
+- **Demo app stays Kustomize**, applied and deleted by the Incident Lab with `kubectl -n "$DEMO_NAMESPACE" apply -k`.
 
-### Components
+</details>
+
+<details>
+<summary><b>Components and versions</b></summary>
 
 | Component | Image / Chart | Role |
-|-----------|---------------|------|
+|---|---|---|
 | OpenShell gateway + supervisor | `oci://ghcr.io/nvidia/openshell/helm-chart` 0.1.6 | Sandbox control plane (gRPC) |
-| OpenShell CLI | v0.1.6 (static musl build, sha256-verified, in the workshop image) | Used by the lessons, `fleet.sh`, `45-openclaw.sh` |
-| agent-sandbox controller | `kubernetes-sigs/agent-sandbox` v1.0.3 (`sandbox.yaml`, `v1beta1`) | CRD controller for sandbox lifecycle |
-| OpenClaw sandbox | `ghcr.io/ansjindal/openclaw-sandbox:2026.8.2` (`images/openclaw-sandbox`) | Sealed agent pod with OpenClaw 2026.8.2 |
-| Workshop web app | Built from `web/Dockerfile` (`WORKSHOP_IMAGE`) | Next.js 16.4.4 + React 19.3 on Node 24, terminal bridge, API routes |
-| Thanos Querier | OpenShift Cluster Monitoring Operator | PromQL API (9091; tenancy 9092) |
-| Grafana | `grafana-community/grafana` chart 14.3.0 | Dashboards and visualization |
-| Loki Operator + LokiStack | Red Hat Loki Operator (OLM) | Log aggregation (multi-tenant gateway) |
-| Tempo Operator + TempoStack | Red Hat Tempo Operator (OLM) | Distributed tracing |
-| OTEL Collector | Red Hat OpenTelemetry Operator (OLM) | Trace ingestion (OTLP → Tempo) |
-| ClusterLogForwarder | Red Hat Cluster Logging Operator (OLM) | Pod log collection → Loki |
-| RustFS | `deploy/observability/object-storage/` chart | S3-compatible object storage for Loki + Tempo |
+| OpenShell CLI | v0.1.6 (static musl build, sha256-verified, in the workshop image) | Lessons, `fleet.sh`, `45-openclaw.sh` |
+| agent-sandbox controller | `kubernetes-sigs/agent-sandbox` v1.0.3 (`v1beta1`) | Sandbox lifecycle |
+| OpenClaw sandbox | `ghcr.io/ansjindal/openclaw-sandbox:2026.8.2` | Sealed agent pod with OpenClaw 2026.8.2 |
+| Workshop web app | built from `web/Dockerfile` | Next.js 16.4.4 + React 19.3 on Node 24, terminal bridge, API routes |
+| Thanos Querier | Cluster Monitoring Operator | PromQL API (9091; tenancy 9092) |
+| Grafana | `grafana-community/grafana` 14.3.0 | Dashboards |
+| Loki Operator + LokiStack | Red Hat Loki Operator | Logs (multi-tenant gateway) |
+| Tempo Operator + TempoStack | Red Hat Tempo Operator | Traces |
+| OTEL Collector | Red Hat OpenTelemetry Operator | OTLP ingestion → Tempo |
+| ClusterLogForwarder | Red Hat Cluster Logging Operator | Pod logs → Loki |
+| RustFS | `deploy/observability/object-storage/` | S3 storage for Loki + Tempo |
 | Event exporter | `ghcr.io/resmoio/kubernetes-event-exporter:v1.7` | Kubernetes events → stdout → Loki |
 | Verdaccio | `docker.io/verdaccio/verdaccio:6.11.1` | Private npm registry for OpenClaw skills |
-| Image prepull (lab) | `deploy/lab-shared/` DaemonSet | Warms the sandbox, gateway and workshop images on every lab node |
-| Self-hosted model (optional) | `registry.redhat.io/rhai/modelcar-nvidia-nemotron-3-nano-30b-a3b-fp8:3.0` | NVIDIA Nemotron 3 Nano 30B-A3B FP8, llm-d `LLMInferenceService` + vLLM (`qwen3_coder` tool calling) |
-| OpenShift AI (optional) | `rhods-operator` stable-3.x (3.5) | KServe/llm-d + Models-as-a-Service (API keys, token limits) |
+| Image prepull (lab) | `deploy/lab-shared/` DaemonSet | Warms the images on every lab node |
+| Self-hosted model (optional) | `registry.redhat.io/rhai/modelcar-nvidia-nemotron-3-nano-30b-a3b-fp8:3.0` | Nemotron 3 Nano 30B-A3B FP8 on llm-d + vLLM (`qwen3_coder` tool calling) |
+| OpenShift AI (optional) | `rhods-operator` stable-3.x (3.5) | KServe/llm-d + Models-as-a-Service |
 | GPU stack (optional) | NFD + NVIDIA GPU Operator v26.7 | GPU node enablement |
-| Red Hat Connectivity Link (optional) | `rhcl-operator` (Kuadrant, Authorino) | MaaS gateway auth and rate limiting |
-| LeaderWorkerSet (optional) | `leader-worker-set` operator | Operator prerequisite installed by `scripts/maas.sh` |
+| Connectivity Link (optional) | `rhcl-operator` (Kuadrant, Authorino) | MaaS auth and rate limiting |
+| LeaderWorkerSet (optional) | `leader-worker-set` operator | MaaS prerequisite |
 
-## Changes in this version
+</details>
 
-This version moves the stack from OpenShell 0.0.71 to **0.1.6** and agent-sandbox v0.4.6 to **v1.0.3** (`v1beta1`). It drops the privileged SCC (sandboxes run under `restricted-v2`, OpenShift 4.19+) and replaces `inference.local` with OpenShell provider profiles. It also adds the multi-attendee lab mode (`scripts/lab.sh`, `scripts/lab-smoke.sh`, `chart/values-lab.yaml`, `deploy/lab-shared/`) and self-hosted inference (`scripts/maas.sh`, `deploy/maas/`), and updates the workshop to Next.js 16.4.4 / Node 24. The legacy install path was removed: `scripts/30-openshell.sh`, `scripts/70-workshop.sh`, `helm/openshell-values.yaml`, `manifests/openshell-route.yaml`, `manifests/openclaw/registry.yaml` and `brev/launchable.md`.
+## 🆕 What's new in this version
 
-See [README-DEPLOYMENT-REVIEW.md](README-DEPLOYMENT-REVIEW.md) for the review report: findings, changes, and test results.
+- **OpenShell 0.0.71 → 0.1.6** and agent-sandbox v0.4.6 → **v1.0.3** (`v1beta1`): no privileged SCC, provider profiles instead of `inference.local`, lessons and API routes migrated, OpenClaw 2026.8.2.
+- **Multi-attendee lab mode:** `scripts/lab.sh` (`up`, `user`, `fleet`, `wake`, `status`, `urls`, `down`), `scripts/lab-smoke.sh`, `chart/values-lab.yaml`, `deploy/lab-shared/`, per-attendee isolation, telemetry scoping and API keys.
+- **Self-hosted inference:** `scripts/maas.sh` + `deploy/maas/` (GPU node, GPU Operator, OpenShift AI 3.5 MaaS, Nemotron 3 Nano).
+- **Reliability found by live tests:**
+  - orchestrate heartbeat and verified probes;
+  - evidence check for healthy apps;
+  - versioned credential placeholders handled;
+  - `/api/check` heartbeat;
+  - Skills lesson built against the sandbox's own OpenClaw;
+  - recovery after a cluster restart.
+- **Web app:** Next.js 16.4.4, React 19.3, Node 24; CI fixed.
+- **Removed legacy path:** `scripts/30-openshell.sh`, `scripts/70-workshop.sh`, `helm/openshell-values.yaml`, `manifests/openshell-route.yaml`, `manifests/openclaw/registry.yaml`, `brev/`.
 
-## Reference
+Details: **[README-DEPLOYMENT-REVIEW.md](README-DEPLOYMENT-REVIEW.md)**.
 
-- [Administrator Guide](docs/ADMIN-GUIDE.md) · [Attendee Guide](docs/USER-GUIDE.md)
+## 📚 Reference
+
+- [Administrator Guide](docs/ADMIN-GUIDE.md) · [Attendee Guide](docs/USER-GUIDE.md) · [Chart / web contract](docs/CONTRACT.md)
 - [OpenShell](https://github.com/NVIDIA/OpenShell) · [Helm chart docs](https://github.com/NVIDIA/OpenShell/blob/main/deploy/helm/openshell/README.md)
-- [NemoClaw](https://github.com/NVIDIA/NemoClaw)
-- [OpenClaw](https://github.com/AgiFlow/OpenClaw)
-- [agent-sandbox CRD](https://github.com/kubernetes-sigs/agent-sandbox)
-- [Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift)
-- [Red Hat OpenShift AI](https://www.redhat.com/en/products/ai/openshift-ai)
+- [NemoClaw](https://github.com/NVIDIA/NemoClaw) · [OpenClaw](https://github.com/AgiFlow/OpenClaw) · [agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox)
+- [Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift) · [Red Hat OpenShift AI](https://www.redhat.com/en/products/ai/openshift-ai)
 
-## Tags
-
-* **Industry:** Cross-industry
-* **Product:** Red Hat OpenShift, Red Hat OpenShift AI
-* **Use case:** AI agents, sandbox governance, SRE automation, observability
-* **Contributor org:** Red Hat, NVIDIA
+**Tags:** Cross-industry · Red Hat OpenShift, Red Hat OpenShift AI · AI agents, sandbox governance, SRE automation, observability · Red Hat, NVIDIA
