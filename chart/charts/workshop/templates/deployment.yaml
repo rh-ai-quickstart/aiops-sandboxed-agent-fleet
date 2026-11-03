@@ -1,10 +1,13 @@
+{{- $gw := include "workshop.gatewayUrl" . -}}
+{{- $domain := .Values.global.clusterAppsDomain -}}
+{{- $monNs := include "workshop.monitoringNamespace" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: workshop
   namespace: {{ .Release.Namespace }}
   labels:
-    app.kubernetes.io/name: workshop
+    {{- include "workshop.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicas }}
   selector:
@@ -13,15 +16,32 @@ spec:
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: workshop
+        {{- include "workshop.labels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
       serviceAccountName: workshop
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: workshop
           image: {{ .Values.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
           ports:
             - containerPort: 3000
               name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          {{- with .Values.inference.existingSecret }}
+          envFrom:
+            # NEMOCLAW_INFERENCE_BASE_URL, NEMOCLAW_MODEL, NEMOCLAW_API_KEY
+            - secretRef:
+                name: {{ . }}
+          {{- end }}
           env:
             - name: HOME
               value: /tmp
@@ -35,22 +55,63 @@ spec:
               value: "0.0.0.0"
             - name: LAB_CWD
               value: /app
-            - name: OPENSHELL_GATEWAY_ENDPOINT
-              value: {{ .Values.openshellGateway.endpointUrl | quote }}
+            # --- namespaces (docs/CONTRACT.md) ---
+            - name: OPENSHELL_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: DEMO_NAMESPACE
+              value: {{ include "workshop.demoNamespace" . | quote }}
+            - name: MONITORING_NAMESPACE
+              value: {{ $monNs | quote }}
+            - name: EVENTS_NAMESPACE
+              value: {{ include "workshop.eventsNamespace" . | quote }}
+            - name: LAB_USER
+              value: {{ .Values.global.lab.user | default "" | quote }}
+            # --- OpenShell gateway (plaintext, in-cluster) ---
             - name: OPENSHELL_GATEWAY_ENDPOINT_URL
-              value: {{ .Values.openshellGateway.endpointUrl | quote }}
+              value: {{ $gw | quote }}
+            # The openshell CLI reads OPENSHELL_GATEWAY_ENDPOINT itself (global
+            # --gateway-endpoint flag) and rejects values without http:// or https://,
+            # so this must stay a full URL; gRPC clients strip the scheme.
+            - name: OPENSHELL_GATEWAY_ENDPOINT
+              value: {{ $gw | quote }}
+            - name: REGISTRY_HOST
+              value: {{ printf "registry.%s.svc.cluster.local" .Release.Namespace | quote }}
             - name: GRAFANA_ORIGIN
-              value: {{ .Values.grafana.origin | quote }}
-            - name: OPENCLAW_GATEWAY_PASSWORD
-              value: {{ .Values.openclaw.gatewayPassword | quote }}
+              value: {{ include "workshop.grafanaOrigin" . | quote }}
+            {{- if $domain }}
+            - name: NEXT_PUBLIC_CLUSTER_APPS_DOMAIN
+              value: {{ $domain | quote }}
+            - name: WORKSHOP_HOST
+              value: {{ printf "workshop-%s.%s" .Release.Namespace $domain | quote }}
+            - name: OPENCLAW_HOST
+              value: {{ printf "openclaw-ui-%s.%s" .Release.Namespace $domain | quote }}
+            - name: GRAFANA_HOST
+              value: {{ printf "grafana-%s.%s" $monNs $domain | quote }}
+            {{- end }}
+            # --- OpenClaw ---
             - name: OPENCLAW_AGENT_NAME
               value: {{ .Values.openclaw.agentName | quote }}
+            {{- with .Values.sandboxImage }}
+            - name: OPENCLAW_SANDBOX_IMAGE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.access.existingSecret }}
+            - name: OPENCLAW_GATEWAY_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.access.existingSecret }}, key: OPENCLAW_GATEWAY_PASSWORD }
+            - name: LAB_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.access.existingSecret }}, key: LAB_ACCESS_TOKEN }
+            {{- else }}
+            - name: OPENCLAW_GATEWAY_PASSWORD
+              value: {{ .Values.openclaw.gatewayPassword | quote }}
+            {{- end }}
             - name: DEMO_APP_MANIFESTS
               value: /app/manifests/demo-app
-            {{- if .Values.global.clusterAppsDomain }}
-            - name: NEXT_PUBLIC_CLUSTER_APPS_DOMAIN
-              value: {{ .Values.global.clusterAppsDomain | quote }}
-            {{- end }}
+            # --- inference (provider created by configure_inference in scripts/lib/common.sh) ---
+            - name: NEMOCLAW_INFERENCE_PROVIDER
+              value: {{ .Values.inference.provider | default "default" | quote }}
+            {{- if not .Values.inference.existingSecret }}
             {{- if .Values.inference.baseUrl }}
             - name: NEMOCLAW_INFERENCE_BASE_URL
               value: {{ .Values.inference.baseUrl | quote }}
@@ -63,48 +124,62 @@ spec:
             - name: NEMOCLAW_API_KEY
               value: {{ .Values.inference.apiKey | quote }}
             {{- end }}
+            {{- end }}
+            # --- monitoring backends (shared, bearer-token auth) ---
             - name: PROM_HOST
               value: {{ .Values.monitoring.promHost | quote }}
+            - name: PROM_TENANCY_HOST
+              value: {{ .Values.monitoring.promTenancyHost | quote }}
             - name: LOKI_HOST
               value: {{ .Values.monitoring.lokiHost | quote }}
             - name: TEMPO_HOST
               value: {{ .Values.monitoring.tempoHost | quote }}
+            {{- if .Values.telemetry.enabled }}
+            - name: TELEMETRY_READER_SA
+              value: {{ .Values.telemetry.serviceAccountName | quote }}
+            {{- end }}
           readinessProbe:
             httpGet:
-              path: /
+              path: {{ .Values.probePath }}
               port: http
             initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /
+              path: {{ .Values.probePath }}
               port: http
             initialDelaySeconds: 30
             periodSeconds: 30
           resources:
-            requests: { cpu: 200m, memory: 512Mi }
-            limits: { memory: 1Gi }
+            {{- toYaml .Values.resources.workshop | nindent 12 }}
         - name: openclaw-forward
           image: {{ .Values.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
           command: ["bash", "-c"]
           args:
             - |
-              GW_URL="${OPENSHELL_GATEWAY_ENDPOINT_URL:-http://openshell.openshell.svc.cluster.local:8080}"
-              openshell gateway add "$GW_URL" --local --name cluster 2>/dev/null || true
-              openshell gateway select cluster 2>/dev/null || true
+              GW_URL="${OPENSHELL_GATEWAY_ENDPOINT_URL:-http://openshell:8080}"
+              # `gateway add` can hang ~90s while the gateway is still starting; the registration is
+              # saved before it returns, so bound it.
+              timeout 15 openshell gateway add "$GW_URL" --local --name cluster >/dev/null 2>&1 || true
+              openshell gateway select cluster >/dev/null 2>&1 || true
               while true; do
                 openshell forward start 0.0.0.0:30789 "${OPENCLAW_AGENT_NAME:-shifty}" 2>&1 || sleep 10
               done
           ports:
             - containerPort: 30789
               name: openclaw-ui
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
           env:
             - name: HOME
               value: /tmp
             - name: OPENSHELL_GATEWAY_ENDPOINT_URL
-              value: {{ .Values.openshellGateway.endpointUrl | quote }}
+              value: {{ $gw | quote }}
+            - name: OPENSHELL_GATEWAY_ENDPOINT
+              value: {{ $gw | quote }}
             - name: OPENCLAW_AGENT_NAME
               value: {{ .Values.openclaw.agentName | quote }}
           resources:
-            requests: { cpu: 50m, memory: 64Mi }
-            limits: { memory: 256Mi }
+            {{- toYaml .Values.resources.forward | nindent 12 }}

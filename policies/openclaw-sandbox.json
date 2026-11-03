@@ -14,6 +14,7 @@
     "read_write": [
       "/sandbox",
       "/tmp",
+      "/var/tmp",
       "/dev/null"
     ]
   },
@@ -31,6 +32,32 @@
         {
           "host": "registry.openshell.svc.cluster.local",
           "port": 4873,
+          "access": "full",
+          "protocol": "rest",
+          "allow_encoded_slash": true
+        }
+      ],
+      "binaries": [
+        {
+          "path": "/usr/bin/node"
+        },
+        {
+          "path": "/usr/local/bin/node"
+        },
+        {
+          "path": "/usr/bin/npm"
+        },
+        {
+          "path": "/usr/local/bin/npm"
+        }
+      ]
+    },
+    "npm-registry": {
+      "name": "npm-registry",
+      "endpoints": [
+        {
+          "host": "registry.npmjs.org",
+          "port": 443,
           "access": "full",
           "protocol": "rest",
           "allow_encoded_slash": true

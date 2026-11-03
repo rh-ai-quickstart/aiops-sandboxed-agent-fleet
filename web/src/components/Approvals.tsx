@@ -2,10 +2,12 @@
 import { useEffect, useState, useCallback } from "react";
 import { RefreshCw, Check, X, Globe, ShieldQuestion, UserPlus, Box } from "lucide-react";
 
-type Endpoint = { host?: string; port?: number; ports?: number[]; rules?: { method?: string; pathGlob?: string; path?: string }[] };
+type L7Rule = { allow?: { method?: string; path?: string } };
+type Endpoint = { host?: string; port?: number; ports?: number[]; path?: string; rules?: L7Rule[] };
 type Chunk = {
   id: string; status?: string; ruleName?: string; rationale?: string; rejectionReason?: string;
-  securityFlagged?: boolean; proposedRule?: { endpoints?: Endpoint[] };
+  securityFlagged?: boolean; securityNotes?: string; applicationError?: string; binary?: string;
+  hitCount?: number; createdMs?: number | null; proposedRule?: { endpoints?: Endpoint[] } | null;
 };
 type Device = { requestId: string; deviceId: string; roles: string[]; scopes: string[]; isRepair: boolean; ts: number | null };
 
@@ -13,7 +15,7 @@ function dest(c: Chunk): string {
   const eps = c.proposedRule?.endpoints ?? [];
   const parts = eps.map((e) => {
     const port = e.port || (e.ports && e.ports[0]) || "";
-    const paths = (e.rules ?? []).map((r) => `${r.method || "*"} ${r.pathGlob || r.path || "/**"}`);
+    const paths = (e.rules ?? []).map((r) => `${r.allow?.method || "*"} ${r.allow?.path || "/**"}`);
     return `${e.host || "?"}${port ? `:${port}` : ""}${paths.length ? ` ${paths.join(", ")}` : ""}`;
   });
   return parts.join(" · ") || c.ruleName || "—";
@@ -29,24 +31,32 @@ export function Approvals() {
   const [chunks, setChunks] = useState<Chunk[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [agent, setAgent] = useState<string>("");
-  const [draftVersion, setDraftVersion] = useState<number | null>(null);
+  const [draftVersion, setDraftVersion] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string>("");
   const [msg, setMsg] = useState<string>("");
 
+  type Snapshot = { dr: Record<string, unknown>; dv: Record<string, unknown> };
+  const fetchSnapshot = useCallback(async (): Promise<Snapshot> => {
+    const [dr, dv] = await Promise.all([
+      fetch("/api/drafts", { cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
+      fetch("/api/devices", { cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
+    ]);
+    return { dr, dv };
+  }, []);
+  const apply = useCallback(({ dr, dv }: Snapshot) => {
+    setChunks(Array.isArray(dr?.chunks) ? (dr.chunks as Chunk[]) : []);
+    // uint64 draft_version arrives as a decimal string (proto-loader longs: String)
+    const ver = dr?.draftVersion;
+    setDraftVersion(ver === null || ver === undefined || ver === "" ? null : String(ver));
+    setDevices(Array.isArray(dv?.pending) ? (dv.pending as Device[]) : []);
+    setAgent(String(dr?.agent || dv?.agent || ""));
+  }, []);
+  // manual reload (spinner); the poller below updates silently
   const load = useCallback(async () => {
     setLoading(true);
-    try {
-      const [dr, dv] = await Promise.all([
-        fetch("/api/drafts", { cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
-        fetch("/api/devices", { cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
-      ]);
-      setChunks(Array.isArray(dr?.chunks) ? dr.chunks : []);
-      setDraftVersion(typeof dr?.draftVersion === "number" ? dr.draftVersion : null);
-      setDevices(Array.isArray(dv?.pending) ? dv.pending : []);
-      setAgent(dr?.agent || dv?.agent || "");
-    } finally { setLoading(false); }
-  }, []);
+    try { apply(await fetchSnapshot()); } finally { setLoading(false); }
+  }, [apply, fetchSnapshot]);
 
   const draftAct = useCallback(async (action: string, chunkId?: string, reason?: string) => {
     setBusy("d" + action + (chunkId || "")); setMsg("");
@@ -79,7 +89,13 @@ export function Approvals() {
     } finally { setBusy(""); }
   }, [load]);
 
-  useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, [load]);
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => { const snap = await fetchSnapshot(); if (alive) apply(snap); };
+    tick();
+    const t = setInterval(tick, 5000);
+    return () => { alive = false; clearInterval(t); };
+  }, [apply, fetchSnapshot]);
 
   const pendingChunks = chunks.filter((c) => (c.status || "pending") === "pending");
   const decidedChunks = chunks.filter((c) => (c.status || "pending") !== "pending");
@@ -121,7 +137,14 @@ export function Approvals() {
                   {c.securityFlagged && <span className="rounded bg-[#ee555533] px-1.5 py-0.5 text-[9px] font-semibold text-[#ee7777]">security-flagged</span>}
                   <span className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ color: tone, border: `1px solid ${tone}55` }}>{st}</span>
                 </div>
+                {(c.binary || age(c.createdMs ?? null)) && (
+                  <p className="mt-1 font-mono text-[10px] text-[var(--color-fg-mut)]">
+                    {c.binary ? `binary ${c.binary}` : ""}{c.binary && c.hitCount ? " · " : ""}{c.hitCount ? `${c.hitCount} hit${c.hitCount === 1 ? "" : "s"}` : ""}{age(c.createdMs ?? null) ? ` · ${age(c.createdMs ?? null)} ago` : ""}
+                  </p>
+                )}
                 {c.rationale && <p className="mt-1 text-[12px] text-[var(--color-fg-dim)]">{c.rationale}</p>}
+                {c.securityNotes && <p className="mt-1 text-[11px] text-[#e0a800]">Security notes: {c.securityNotes}</p>}
+                {c.applicationError && <p className="mt-1 text-[11px] text-[#ee7777]">Cannot apply: {c.applicationError}</p>}
                 {c.rejectionReason && <p className="mt-1 text-[11px] text-[#ee7777]">Rejected: {c.rejectionReason}</p>}
                 <div className="mt-2 flex gap-2">
                   {st === "pending" ? (

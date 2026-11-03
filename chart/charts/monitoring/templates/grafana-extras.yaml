@@ -11,6 +11,8 @@ data:
     datasources:
       - name: Prometheus
         type: prometheus
+        uid: prometheus
+        isDefault: true
         access: proxy
         url: {{ .Values.endpoints.prometheus.url }}
         jsonData:
@@ -71,27 +73,52 @@ data:
       "timezone": "browser",
       "schemaVersion": 39,
       "time": { "from": "now-1h", "to": "now" },
+      "templating": {
+        "list": [
+          {
+            "name": "ns", "label": "OpenShell namespace", "type": "query",
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "query": { "query": "label_values(kube_pod_info{namespace=~\"openshell|.+-openshell\"}, namespace)", "refId": "ns" },
+            "definition": "label_values(kube_pod_info{namespace=~\"openshell|.+-openshell\"}, namespace)",
+            "refresh": 2, "sort": 1, "includeAll": false, "multi": false,
+            "current": { "selected": true, "text": "openshell", "value": "openshell" }
+          },
+          {
+            "name": "demo", "label": "Demo namespace", "type": "query",
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "query": { "query": "label_values(kube_pod_info{namespace=~\"demo|.+-demo\"}, namespace)", "refId": "demo" },
+            "definition": "label_values(kube_pod_info{namespace=~\"demo|.+-demo\"}, namespace)",
+            "refresh": 2, "sort": 1, "includeAll": false, "multi": false,
+            "current": { "selected": true, "text": "demo", "value": "demo" }
+          }
+        ]
+      },
       "panels": [
         {
-          "type": "stat", "title": "Sandbox pods (openshell + openclaw)",
+          "type": "stat", "datasource": { "type": "prometheus", "uid": "prometheus" }, "title": "Pods in $ns (gateway, sandboxes, workshop)",
           "gridPos": { "h": 5, "w": 8, "x": 0, "y": 0 },
-          "targets": [{ "expr": "count(kube_pod_info{namespace=~\"openshell|openclaw\"})", "refId": "A" }],
+          "targets": [{ "expr": "count(kube_pod_info{namespace=\"$ns\"})", "refId": "A" }],
           "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }] } } }
         },
         {
-          "type": "timeseries", "title": "Agent CPU (cores) by pod",
+          "type": "timeseries", "datasource": { "type": "prometheus", "uid": "prometheus" }, "title": "Agent CPU (cores) by pod",
           "gridPos": { "h": 8, "w": 16, "x": 8, "y": 0 },
-          "targets": [{ "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=~\"openshell|openclaw\",container!=\"\"}[5m]))", "refId": "A", "legendFormat": "{{ "{{pod}}" }}" }]
+          "targets": [{ "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$ns\",container!=\"\"}[5m]))", "refId": "A", "legendFormat": "{{ "{{pod}}" }}" }]
         },
         {
-          "type": "timeseries", "title": "Agent memory (MiB) by pod",
+          "type": "timeseries", "datasource": { "type": "prometheus", "uid": "prometheus" }, "title": "Agent memory (MiB) by pod",
           "gridPos": { "h": 8, "w": 16, "x": 8, "y": 8 },
-          "targets": [{ "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=~\"openshell|openclaw\",container!=\"\"}) / 1024 / 1024", "refId": "A", "legendFormat": "{{ "{{pod}}" }}" }]
+          "targets": [{ "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"$ns\",container!=\"\"}) / 1024 / 1024", "refId": "A", "legendFormat": "{{ "{{pod}}" }}" }]
         },
         {
-          "type": "stat", "title": "Container restarts (1h)",
+          "type": "stat", "datasource": { "type": "prometheus", "uid": "prometheus" }, "title": "Container restarts (1h)",
           "gridPos": { "h": 5, "w": 8, "x": 0, "y": 5 },
-          "targets": [{ "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=~\"openshell|openclaw\"}[1h]))", "refId": "A" }]
+          "targets": [{ "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"$ns\"}[1h]))", "refId": "A" }]
+        },
+        {
+          "type": "timeseries", "datasource": { "type": "prometheus", "uid": "prometheus" }, "title": "Shop request rate by code ($demo)",
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+          "targets": [{ "expr": "sum by (code) (rate(shop_requests_total{namespace=\"$demo\"}[2m]))", "refId": "A", "legendFormat": "{{ "{{code}}" }}" }]
         }
       ]
     }

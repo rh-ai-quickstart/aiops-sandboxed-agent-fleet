@@ -1,19 +1,42 @@
+{{- /*
+Pulls the default sandbox image onto one node so the first `sandbox create` does not wait
+for a multi-GB pull. Lab mode disables it (shared prepull DaemonSet in `lab-shared`).
+*/ -}}
 {{- if .Values.sandboxPrepull.enabled }}
+{{- $img := .Values.upstream.sandbox.image }}
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: sandbox-image-prepull
   namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: sandbox-image-prepull
 spec:
   backoffLimit: 2
   ttlSecondsAfterFinished: 600
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sandbox-image-prepull
     spec:
-      serviceAccountName: openshell-sandbox
       restartPolicy: Never
+      automountServiceAccountToken: false
+      {{- with .Values.upstream.server.sandboxImagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: prepull
-          image: {{ .Values.upstream.server.sandboxImage }}
+          image: {{ printf "%s%s" $img.repository (ternary (printf "@%s" ($img.digest | default "")) (printf ":%s" ($img.tag | default "latest")) (not (empty $img.digest))) | quote }}
           imagePullPolicy: IfNotPresent
           command: ["sh", "-c", "exit 0"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
 {{- end }}

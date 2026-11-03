@@ -1,8 +1,0 @@
-# The namespace the shop-app / payments / loadgen live in. Listed first in the
-# kustomization so `kubectl apply -k` creates it BEFORE the namespaced resources —
-# otherwise a fresh cluster (no pre-existing `demo` ns) fails the whole apply with
-#: namespaces "demo" not found, and the Incident Lab shows "not deployed".
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: demo

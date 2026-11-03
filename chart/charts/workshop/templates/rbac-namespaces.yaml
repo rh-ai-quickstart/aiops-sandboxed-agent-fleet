@@ -1,0 +1,158 @@
+{{- /*
+Namespaced RBAC of the workshop ServiceAccount (docs/CONTRACT.md "RBAC").
+  - release namespace (gateway, sandboxes, registry, workshop): built-in `view` + Role
+    workshop-self (sandboxes read, telemetry-reader token, optional pods/exec)
+  - demo namespace: built-in `view` + Role workshop-demo (deploy / scale / delete the demo app)
+  - platform namespaces: read-only pods / services / routes
+*/ -}}
+{{- $ns := .Release.Namespace -}}
+{{- $demo := include "workshop.demoNamespace" . -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: workshop-view
+  namespace: {{ $ns }}
+  labels:
+    {{- include "workshop.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - kind: ServiceAccount
+    name: workshop
+    namespace: {{ $ns }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: workshop-self
+  namespace: {{ $ns }}
+  labels:
+    {{- include "workshop.labels" . | nindent 4 }}
+rules:
+  # `view` does not cover the agent-sandbox CRs.
+  - apiGroups: ["agents.x-k8s.io"]
+    resources: ["sandboxes"]
+    verbs: ["get", "list", "watch"]
+  {{- if .Values.telemetry.enabled }}
+  # Short-lived tokens for the per-instance telemetry-reader (fleet agents, /api fallback).
+  - apiGroups: [""]
+    resources: ["serviceaccounts/token"]
+    resourceNames: [{{ .Values.telemetry.serviceAccountName | quote }}]
+    verbs: ["create"]
+  {{- end }}
+  {{- if .Values.rbac.allowExec }}
+  # `oc exec` into pods of this namespace (into-the-sandbox lesson). Off in lab mode.
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: workshop-self
+  namespace: {{ $ns }}
+  labels:
+    {{- include "workshop.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: workshop-self
+subjects:
+  - kind: ServiceAccount
+    name: workshop
+    namespace: {{ $ns }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: workshop-view
+  namespace: {{ $demo }}
+  labels:
+    {{- include "workshop.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - kind: ServiceAccount
+    name: workshop
+    namespace: {{ $ns }}
+---
+# The Incident Lab applies / scales / deletes the demo app (kubectl -n <demo> apply -k ...).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: workshop-demo
+  namespace: {{ $demo }}
+  labels:
+    {{- include "workshop.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["monitoring.coreos.com"]
+    resources: ["servicemonitors"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: workshop-demo
+  namespace: {{ $demo }}
+  labels:
+    {{- include "workshop.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: workshop-demo
+subjects:
+  - kind: ServiceAccount
+    name: workshop
+    namespace: {{ $ns }}
+{{- /* On a live install skip platform namespaces that do not exist (e.g. no observability
+stack yet); offline rendering (lookup returns nothing) renders them all. */ -}}
+{{- $live := lookup "v1" "Namespace" "" $ns -}}
+{{- range .Values.rbac.platformReadNamespaces }}
+{{- if or (not $live) (lookup "v1" "Namespace" "" .) }}
+---
+# Read-only view of the shared platform namespace {{ . }} (monitoring/troubleshooting lessons).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $ns }}-workshop-platform-read
+  namespace: {{ . }}
+  labels:
+    app.kubernetes.io/name: workshop
+    app.kubernetes.io/part-of: nemoclaw
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services"]
+    verbs: ["get", "list"]
+  - apiGroups: ["route.openshift.io"]
+    resources: ["routes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $ns }}-workshop-platform-read
+  namespace: {{ . }}
+  labels:
+    app.kubernetes.io/name: workshop
+    app.kubernetes.io/part-of: nemoclaw
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $ns }}-workshop-platform-read
+subjects:
+  - kind: ServiceAccount
+    name: workshop
+    namespace: {{ $ns }}
+{{- end }}
+{{- end }}

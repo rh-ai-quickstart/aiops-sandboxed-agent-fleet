@@ -1,31 +1,32 @@
 import { DIAGRAM as C } from "./palette";
 
 // The full workshop stack, top to bottom — pure inline SVG, scales via viewBox.
-export function StackDiagram() {
-  const W = 880;
-  const H = 480;
+const W = 880;
+const H = 480;
+const Layer = ({ y, h, fill, stroke, n, title, sub, badge, badgeColor }: {
+  y: number; h: number; fill: string; stroke: string; n: number; title: string; sub: string; badge?: string; badgeColor?: string;
+}) => {
+  const x = 70, w = W - 140;
+  return (
+    <g>
+      <rect x={x} y={y} width={w} height={h} rx={12} fill={fill} stroke={stroke} strokeWidth={1.6} />
+      <circle cx={x + 26} cy={y + h / 2} r={13} fill={stroke} stroke="#fff" strokeWidth={1.7} />
+      <text x={x + 26} y={y + h / 2 + 4.6} fontSize={13} fill="#fff" textAnchor="middle" fontWeight={700}>{n}</text>
+      <text x={x + 52} y={y + (badge ? 25 : h / 2 - 2)} fontSize={15} fill={C.ink} fontWeight={700}>{title}</text>
+      <text x={x + 52} y={y + (badge ? 44 : h / 2 + 16)} fontSize={11.5} fill={C.sub}>{sub}</text>
+      {badge && (
+        <g>
+          <rect x={x + w - 150} y={y + h / 2 - 11} width={132} height={22} rx={11} fill={`${badgeColor}1c`} stroke={badgeColor} strokeWidth={1} />
+          <text x={x + w - 84} y={y + h / 2 + 4} fontSize={11} fill={badgeColor} textAnchor="middle" fontWeight={700}>{badge}</text>
+        </g>
+      )}
+    </g>
+  );
+};
+const Arrow = ({ y }: { y: number }) => <path d={`M${W / 2},${y} L${W / 2},${y + 16}`} stroke={C.ink} strokeWidth={2} markerEnd="url(#sd_ar)" />;
 
-  const Layer = ({ y, h, fill, stroke, n, title, sub, badge, badgeColor }: {
-    y: number; h: number; fill: string; stroke: string; n: number; title: string; sub: string; badge?: string; badgeColor?: string;
-  }) => {
-    const x = 70, w = W - 140;
-    return (
-      <g>
-        <rect x={x} y={y} width={w} height={h} rx={12} fill={fill} stroke={stroke} strokeWidth={1.6} />
-        <circle cx={x + 26} cy={y + h / 2} r={13} fill={stroke} stroke="#fff" strokeWidth={1.7} />
-        <text x={x + 26} y={y + h / 2 + 4.6} fontSize={13} fill="#fff" textAnchor="middle" fontWeight={700}>{n}</text>
-        <text x={x + 52} y={y + (badge ? 25 : h / 2 - 2)} fontSize={15} fill={C.ink} fontWeight={700}>{title}</text>
-        <text x={x + 52} y={y + (badge ? 44 : h / 2 + 16)} fontSize={11.5} fill={C.sub}>{sub}</text>
-        {badge && (
-          <g>
-            <rect x={x + w - 150} y={y + h / 2 - 11} width={132} height={22} rx={11} fill={`${badgeColor}1c`} stroke={badgeColor} strokeWidth={1} />
-            <text x={x + w - 84} y={y + h / 2 + 4} fontSize={11} fill={badgeColor} textAnchor="middle" fontWeight={700}>{badge}</text>
-          </g>
-        )}
-      </g>
-    );
-  };
-  const Arrow = ({ y }: { y: number }) => <path d={`M${W / 2},${y} L${W / 2},${y + 16}`} stroke={C.ink} strokeWidth={2} markerEnd="url(#sd_ar)" />;
+export function StackDiagram() {
+
 
   return (
     <figure className="my-6 overflow-hidden rounded-xl border border-[var(--color-line)]">

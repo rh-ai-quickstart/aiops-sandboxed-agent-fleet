@@ -11,27 +11,29 @@ what's *already firing* — so the fleet starts from the alerts, not just raw si
 1. **Spec** — one line in `fleet.txt` (Alertmanager is part of the OpenShift Cluster Monitoring Operator):
 
    ```text
-   alerts   alertmanager-main.openshift-monitoring.svc.cluster.local:9094   -
+   alerts   alertmanager-main.openshift-monitoring.svc.cluster.local:9092   -
    ```
+
+   (`9092` is Alertmanager's *tenancy* port: it only returns alerts for the `?namespace=` you ask for, and checks the agent's token may read it — so in a shared lab the agent sees only your alerts.)
 2. **Soul** — `manifests/openclaw/fleet-roles/alerts/{IDENTITY.md,SOUL.md}`: "you read firing
    alerts only; surface alertname, severity, and the object."
 3. **Probe** — add to `buildProbes()` in the orchestrator:
 
    ```text
-   alerts: http://<alertmanager>:9094/api/v2/alerts
+   alerts: https://<alertmanager>:9092/api/v2/alerts?namespace=<demo ns>
    ```
    `tq.js` already renders JSON arrays compactly. `fleet.sh up` does the rest.
 
 ## A new fault: make the four signals *combine*
 
-The image-pull fault is clean, but metrics alone cracks it. Inject something that needs the fleet
+The payments-down fault is clean, and events alone nearly crack it. Inject something that needs the fleet
 to **reconcile multiple signals** — that's where a fleet earns its keep:
 
 - **CrashLoopBackOff** — ship a bad command/args. Now `events` shows BackOff, `logs` shows the
   crash output (real log lines!), `metrics` shows restart counts climbing. The analyst has to
   weave all three.
-- **Bad config** — mount a ConfigMap with a wrong value. The app *starts* (so no ImagePull
-  signal), logs errors, latency spikes in traces, and an SLO alert fires. Four angles, one cause.
+- **Bad config** — mount a ConfigMap with a wrong value. The app *starts* (so no scale-down or
+  BackOff event), logs errors, latency spikes in traces, and an SLO alert fires. Four angles, one cause.
 
 Wire it as another action in [`/api/incident`](/learn/incident-lab) next to `break`.
 
@@ -45,15 +47,15 @@ tool instead of hand-rolled HTTP — same governance, nicer ergonomics.
 ## Close the loop with GitOps
 
 Today the approved fix is a `kubectl` change behind a human confirm. In production, make "Apply
-fix" open a **pull request** instead — the analyst's recommended image becomes a one-line commit a
+fix" open a **pull request** instead — the analyst's recommended action becomes a one-line commit a
 reviewer approves and **ArgoCD** syncs. Same shape (fleet recommends → human approves → delivered),
 real delivery. The human gate doesn't move; only the mechanism does.
 
 ## Point it at *your* workload
 
-The orchestrator is parameterized: `INCIDENT_NS`, `PROM_HOST`, `LOKI_HOST`, `TEMPO_HOST` are all
-env-overridable. Deploy your own app, set `INCIDENT_NS`, and the same fleet investigates *your*
-namespace. Nothing about the pattern is specific to `demo/shop`.
+The orchestrator is parameterized: `DEMO_NAMESPACE`, `PROM_HOST`, `LOKI_HOST`, `TEMPO_HOST` are all
+env-overridable (on the workshop Deployment). Deploy your own app, point `DEMO_NAMESPACE` at it, and the same fleet investigates *your*
+namespace — every probe is already namespace-scoped. Nothing about the pattern is specific to the `shop` demo.
 
 <Callout type="rh" title="The test of a good pattern">
 Every idea above is the <em>same three moves</em>: add an egress line, add a persona, add a probe.

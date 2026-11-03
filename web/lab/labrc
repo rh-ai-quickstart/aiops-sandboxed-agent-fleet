@@ -1,20 +1,50 @@
-# OpenClaw workshop lab shell — sourced by the in-browser terminal (server.mjs).
-# In-cluster: oc/kubectl auto-detect the ServiceAccount token. For local dev,
-# set KUBECONFIG before starting the server.
+# OpenClaw workshop lab shell — sourced by the in-browser terminal (server.mjs, --rcfile) and by
+# every "Run in shell" check (/api/check, via BASH_ENV). In-cluster: oc/kubectl auto-detect the
+# ServiceAccount token. For local dev, set KUBECONFIG before starting the server.
 export PATH="$PATH:/usr/local/bin:/usr/bin"
+
+# --- this instance's namespaces (single mode: openshell + demo; lab: userNN-openshell + userNN-demo)
+: "${OPENSHELL_NAMESPACE:=${OPENSHELL_NS:-$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace 2>/dev/null || echo openshell)}}"
+: "${DEMO_NAMESPACE:=${DEMO_NS:-demo}}"
+export OPENSHELL_NAMESPACE DEMO_NAMESPACE
+export OPENSHELL_NS="$OPENSHELL_NAMESPACE" DEMO_NS="$DEMO_NAMESPACE"
+export LAB_USER="${LAB_USER:-}"
+if [[ -n "$LAB_USER" || "${LAB_GATE_ENABLED:-}" == "1" ]]; then export LAB_MODE=1; else export LAB_MODE=""; fi
+export REGISTRY_HOST="${REGISTRY_HOST:-registry.${OPENSHELL_NS}.svc.cluster.local}"
+
+# The openshell CLI treats OPENSHELL_GATEWAY_ENDPOINT as a URL override; use the registered
+# `cluster` gateway (entrypoint.sh) instead.
+unset OPENSHELL_GATEWAY_ENDPOINT
+
+# --- workshop files: ~/nemoclaw-openshift-launchable → /app (policies, manifests, scripts, .env)
+export LAB_HOME="$HOME/nemoclaw-openshift-launchable"
+[[ -e "$LAB_HOME" ]] || ln -sfn "${LAB_CWD:-/app}" "$LAB_HOME" 2>/dev/null || true
+
+# --- agent defaults
+export OPENCLAW_AGENT="${OPENCLAW_AGENT:-${OPENCLAW_AGENT_NAME:-shifty}}"
+export OPENCLAW_GATEWAY_PASSWORD="${OPENCLAW_GATEWAY_PASSWORD:-openclaw}"
+export OPENCLAW_SANDBOX_IMAGE="${OPENCLAW_SANDBOX_IMAGE:-ghcr.io/ansjindal/openclaw-sandbox:2026.8.2}"
+
+# --- inference (OpenShell 0.1.6): provider profile + provider, attached to sandboxes with --provider
+export NEMOCLAW_INFERENCE_PROVIDER="${NEMOCLAW_INFERENCE_PROVIDER:-default}"
+export NEMOCLAW_INFERENCE_PROFILE_ID="${NEMOCLAW_INFERENCE_PROFILE_ID:-maas-openai}"
+export NEMOCLAW_INFERENCE_PROFILE="${NEMOCLAW_INFERENCE_PROFILE:-$HOME/.config/nemoclaw/inference-profile.yaml}"
+if [[ ! -f "$NEMOCLAW_INFERENCE_PROFILE" && -n "${NEMOCLAW_INFERENCE_BASE_URL:-}" && -f "${LAB_CWD:-/app}/lab/render-inference-profile.sh" ]]; then
+  bash "${LAB_CWD:-/app}/lab/render-inference-profile.sh" "$NEMOCLAW_INFERENCE_PROFILE" >/dev/null 2>&1 || true
+fi
 
 # `sbox-openclaw ...` is a LAB-SHELL HELPER (not the real binary — there's no openclaw on
 # this host). It runs the OpenClaw CLI INSIDE your agent's sandbox via the OpenShell gateway
 # (`openshell sandbox exec -n shifty -- openclaw ...`). For gateway subcommands (devices,
 # health, logs, …) it also adds `--url`/`--password` so they reach the in-sandbox gateway on
-# :30789 (password = OPENCLAW_GATEWAY_PASSWORD, default openshell-wad26). Set OPENCLAW_AGENT
+# :30789 (password = OPENCLAW_GATEWAY_PASSWORD, default openclaw). Set OPENCLAW_AGENT
 # to target a different sandbox name (default: shifty). Named distinctly so it's never
 # mistaken for running openclaw locally.
 sbox-openclaw() {
   local extra=()
   case "$1" in
     devices|health|approvals|cron|logs)
-      extra=(--url "ws://127.0.0.1:30789" --password "${OPENCLAW_GATEWAY_PASSWORD:-openshell-wad26}") ;;
+      extra=(--url "ws://127.0.0.1:30789" --password "${OPENCLAW_GATEWAY_PASSWORD:-openclaw}") ;;
   esac
   openshell sandbox exec -n "${OPENCLAW_AGENT:-shifty}" -- openclaw "$@" "${extra[@]}"
 }
@@ -24,10 +54,10 @@ sbox-openclaw() {
 # is useful for additional fleet agents that are NOT automatically forwarded.
 expose-agent() {
   local sb="${1:?usage: expose-agent <sandbox> [port=8000]}" port="${2:-8000}"
-  openshell forward stop >/dev/null 2>&1
+  openshell forward stop "$port" "$sb" >/dev/null 2>&1
   if openshell forward start "0.0.0.0:$port" "$sb" --background >/dev/null 2>&1; then
     echo "✓ forwarding :$port → $sb"
-    echo "  (stop with: openshell forward stop)"
+    echo "  (stop with: openshell forward stop $port $sb)"
   else
     echo "✗ forward failed — is $sb Running and serving HTTP on :$port?"
   fi
@@ -36,9 +66,10 @@ expose-agent() {
 if [[ $- == *i* ]]; then
   PS1='\[\e[1;32m\]oclaw-lab\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]$ '
 
-  echo -e "\e[1;32m🦞 OpenClaw workshop lab shell\e[0m"
-  echo -e "  \e[2mcluster:\e[0m  oc get pods -A"
-  echo -e "  \e[2magent:\e[0m    \e[1;33msbox-openclaw\e[0m devices list   (lab helper → runs openclaw INSIDE sandbox 'shifty')"
-  echo -e "  \e[2mgateway:\e[0m  openshell sandbox list       (create sandboxes via the OpenShift gateway)"
+  echo -e "\e[1;32m🦞 OpenClaw workshop lab shell\e[0m${LAB_USER:+  \e[2m(attendee ${LAB_USER})\e[0m}"
+  echo -e "  \e[2mnamespaces:\e[0m \$OPENSHELL_NS=${OPENSHELL_NS}  \$DEMO_NS=${DEMO_NS}"
+  echo -e "  \e[2mcluster:\e[0m    oc get pods -n \"\$OPENSHELL_NS\""
+  echo -e "  \e[2magent:\e[0m      \e[1;33msbox-openclaw\e[0m devices list   (lab helper → runs openclaw INSIDE sandbox '${OPENCLAW_AGENT}')"
+  echo -e "  \e[2mgateway:\e[0m    openshell sandbox list       (create sandboxes via your OpenShell gateway)"
   echo
 fi

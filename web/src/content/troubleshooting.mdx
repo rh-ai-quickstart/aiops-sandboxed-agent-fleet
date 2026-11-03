@@ -9,23 +9,53 @@ openshell sandbox exec -n shifty -- sh -c 'tail -3 /sandbox/gateway.log'   # gat
 ```
 
 ## Can't reach the gateway
-The gateway is exposed via an OpenShift Route. Check that the Route exists and the gateway pod is running:
+The gateway is an in-cluster Service in your namespace (no public Route). Check that the Service exists, the gateway pod is running, and the CLI is pointed at it:
 
 ```bash
-oc -n openshell get route
-oc -n openshell get pods
-openshell gateway select cluster
+oc -n "$OPENSHELL_NS" get svc openshell
+oc -n "$OPENSHELL_NS" get pods
+openshell gateway list
+openshell status
 openshell sandbox list
 ```
 
-If the Route exists but the gateway isn't responding, check the pod logs:
+If the pod is running but the gateway isn't responding, check its logs:
 
 ```bash
-oc -n openshell logs openshell-0
+oc -n "$OPENSHELL_NS" logs openshell-0 --tail=50
+```
+
+## A sandbox never becomes Ready (or shows Completed)
+Two classic causes: it was created **without `--policy`** (its supervisor keeps waiting for a policy the gateway doesn't have), or its main command **exited** (e.g. `-- true`), which leaves the sandbox *Completed*. Look at it, then recreate it the right way:
+
+```bash
+openshell sandbox list
+oc -n "$OPENSHELL_NS" get sandboxes,pods
+```
+
+```bash-ref
+openshell sandbox delete shifty
+openshell sandbox create --name shifty --from "$OPENCLAW_SANDBOX_IMAGE" \
+  --policy ~/nemoclaw-openshift-launchable/policies/openclaw-sandbox.yaml \
+  --provider "$NEMOCLAW_INFERENCE_PROVIDER" --no-tty --detach -- sleep infinity
+```
+
+## The agent gets 401 / can't reach the model
+The agent only reaches your endpoint through an **attached provider**. Check the attachment and the provider:
+
+```bash
+openshell sandbox provider list shifty
+openshell provider list
+```
+
+If nothing is attached, attach it and wait until the sandbox has applied it — then restart OpenClaw (only *new* processes receive the credential placeholder):
+
+```bash-ref
+openshell sandbox provider attach shifty "$NEMOCLAW_INFERENCE_PROVIDER" --wait
 ```
 
 ## Can't reach the OpenShift console
-Check the console Route and pods:
+Check the console Route and pods (in a shared lab the console may not be offered — the workshop hides its link then):
 
 ```bash
 oc -n openshift-console get route

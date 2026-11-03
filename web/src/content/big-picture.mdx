@@ -5,9 +5,9 @@ The workshop stack is a stack of stacks. From the bottom up, each layer hands a 
 ## Reading the stack
 
 1. **OpenShift** — Red Hat's enterprise Kubernetes. Real OpenShift APIs + `oc`, Routes, SecurityContextConstraints, and the web console.
-2. **OpenShell** — the sandbox control plane; gateway-created agents become isolated, policy-bound pods. Reached via an OpenShift Route or the in-cluster Service.
+2. **OpenShell** — the sandbox control plane; gateway-created agents become isolated, policy-bound pods. Reached through its in-cluster Service (deliberately not exposed on a public Route).
 3. **OpenClaw** — the agent ("Shifty 🦞") *you create* on the gateway, running in a sealed sandbox with a web control UI.
-4. **Remote inference** — the agent calls an OpenAI-compatible model endpoint for its thinking.
+4. **Remote inference** — the agent calls an OpenAI-compatible model endpoint for its thinking, holding only a placeholder key the OpenShell supervisor swaps for the real one on the way out.
 
 <Callout type="note" title="Pre-built vs. hands-on">
 Layers 1–2 (the cluster and the OpenShell gateway) are <strong>pre-provisioned</strong> — Part II shows how, and Part III has you drive it. Layer 3, the <strong>agent itself</strong>, is what <em>you</em> build by hand in Part IV.

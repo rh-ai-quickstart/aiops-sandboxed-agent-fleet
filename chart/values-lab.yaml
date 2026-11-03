@@ -1,0 +1,37 @@
+# Lab (multi-tenant) mode — layered on top of values.yaml by scripts/lab.sh:
+#   helm upgrade --install nemoclaw chart/ -n <user>-openshell \
+#     -f chart/values.yaml -f chart/values-lab.yaml \
+#     --set global.clusterAppsDomain=<domain> --set global.demoNamespace=<user>-demo \
+#     --set global.lab.user=<user> [--set workshop.image=$WORKSHOP_IMAGE]
+# Secrets `workshop-access` (LAB_ACCESS_TOKEN, OPENCLAW_GATEWAY_PASSWORD) and
+# `lab-inference` (NEMOCLAW_INFERENCE_BASE_URL, NEMOCLAW_MODEL, NEMOCLAW_API_KEY) are
+# created by lab.sh in <user>-openshell before the install.
+global:
+  lab:
+    user: ""          # set per attendee with --set global.lab.user=<user>
+
+isolation:
+  networkPolicies:
+    enabled: true
+  limits:
+    enabled: true
+
+openshell:
+  # Never expose an attendee's (unauthenticated) gateway on the router.
+  route:
+    enabled: false
+  # The shared prepull DaemonSet in `lab-shared` warms every lab node instead.
+  sandboxPrepull:
+    enabled: false
+  registry:
+    # emptyDir: one EBS attachment less per attendee; skills live as long as the pod.
+    persistence: false
+
+workshop:
+  rbac:
+    # No `oc exec` for attendees on a shared cluster.
+    allowExec: false
+  inference:
+    existingSecret: lab-inference
+  access:
+    existingSecret: workshop-access

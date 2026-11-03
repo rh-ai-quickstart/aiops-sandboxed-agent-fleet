@@ -1,21 +1,22 @@
 import { DIAGRAM as C } from "./palette";
 
 // The Cluster Copilot loop: ask → inspect → propose → approve → act.
+const W = 880, H = 300;
+const Node = ({ x, y, w, fill, stroke, title, sub }: { x: number; y: number; w: number; fill: string; stroke: string; title: string; sub: string }) => (
+  <g>
+    <rect x={x} y={y} width={w} height={64} rx={12} fill={fill} stroke={stroke} strokeWidth={1.6} />
+    <text x={x + w / 2} y={y + 27} fontSize={13.5} fill={C.ink} textAnchor="middle" fontWeight={700}>{title}</text>
+    <text x={x + w / 2} y={y + 46} fontSize={10.8} fill={C.sub} textAnchor="middle">{sub}</text>
+  </g>
+);
+const Arrow = ({ x1, y1, x2, y2, label }: { x1: number; y1: number; x2: number; y2: number; label?: string }) => (
+  <g>
+    <path d={`M${x1},${y1} L${x2},${y2}`} stroke={C.ctrl} strokeWidth={2} fill="none" markerEnd="url(#cf_ar)" />
+    {label && <text x={(x1 + x2) / 2} y={Math.min(y1, y2) - 8} fontSize={10.5} fill={C.use} textAnchor="middle" fontWeight={600}>{label}</text>}
+  </g>
+);
+
 export function CopilotFlow() {
-  const W = 880, H = 300;
-  const Node = ({ x, y, w, fill, stroke, title, sub }: { x: number; y: number; w: number; fill: string; stroke: string; title: string; sub: string }) => (
-    <g>
-      <rect x={x} y={y} width={w} height={64} rx={12} fill={fill} stroke={stroke} strokeWidth={1.6} />
-      <text x={x + w / 2} y={y + 27} fontSize={13.5} fill={C.ink} textAnchor="middle" fontWeight={700}>{title}</text>
-      <text x={x + w / 2} y={y + 46} fontSize={10.8} fill={C.sub} textAnchor="middle">{sub}</text>
-    </g>
-  );
-  const Arrow = ({ x1, y1, x2, y2, label }: { x1: number; y1: number; x2: number; y2: number; label?: string }) => (
-    <g>
-      <path d={`M${x1},${y1} L${x2},${y2}`} stroke={C.ctrl} strokeWidth={2} fill="none" markerEnd="url(#cf_ar)" />
-      {label && <text x={(x1 + x2) / 2} y={Math.min(y1, y2) - 8} fontSize={10.5} fill={C.use} textAnchor="middle" fontWeight={600}>{label}</text>}
-    </g>
-  );
   return (
     <figure className="my-6 overflow-hidden rounded-xl border border-[var(--color-line)]">
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" fontFamily={C.font} role="img" aria-label="Cluster Copilot loop">

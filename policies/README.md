@@ -55,15 +55,22 @@ process:
 | **Balanced** (this file) | npm, pypi, huggingface, brew, brave |
 | Open | npm, pypi, slack, discord, telegram, jira, outlook |
 
-Baseline always allows: remote **inference**, **ClawHub**, **OpenClaw** API/docs, **npm**.
+Inference is not part of these files: with OpenShell 0.1.x the sandbox attaches an
+inference provider (`openshell sandbox create --provider <name>`), and the provider's profile
+(`manifests/openclaw/inference-profile.yaml.tmpl`, endpoint parsed from
+`NEMOCLAW_INFERENCE_BASE_URL`) contributes the model endpoint to the effective policy.
 
-> ⚠️ Set the `inference` group's `host` to match `NEMOCLAW_INFERENCE_BASE_URL` in `.env`.
-> With no local GPU, all inference is remote — if that host isn't allowed, the agent can't think.
+The registry host is `registry.openshell.svc.cluster.local` (single-instance default). In
+other namespaces (lab mode) the tooling rewrites it to
+`registry.<namespace>.svc.cluster.local` — the OpenShell proxy does not resolve
+single-label hosts such as `registry`.
 
 ## Applying
 
-- **At onboard (static):** phase `40-nemoclaw.sh` passes this file to `nemoclaw onboard`
-  via `--policy policies/openclaw-sandbox.yaml`.
-- **Live, non-destructive (network only):** `nemoclaw <sandbox-name> policy-add policies/presets/github.yaml`
-- **Ad-hoc approval:** when the agent hits an unlisted host, an operator can approve it in
-  `openshell term`, which adds it to the running session.
+- **At creation (static + network):** `openshell sandbox create --policy policies/openclaw-sandbox.yaml ...`
+  (a sandbox created without `--policy` never becomes Ready on 0.1.x).
+- **Live, whole file:** `openshell policy set <sandbox> --policy <file> --wait`
+- **Live, incremental (network only):** `openshell policy update <sandbox> --add-endpoint host:port[:access[:protocol]]`
+  (L7 allow/deny rules need `--rule-name` plus `--binary ...` or `--any-binary`).
+- **Ad-hoc approval:** when the agent hits an unlisted host, approve the draft rule in the
+  workshop's Approvals page or `openshell term`.

@@ -1,11 +1,12 @@
 You understand the pieces — now **play with the whole control plane like an operator** before you build for real: observe it, govern it, expose it, using the `openshell` CLI. We'll create a **throwaway sandbox** just to poke at (no OpenClaw, no model — that's Part IV). By the end you'll have touched every part of OpenShell. (All of this runs in the lab shell against your live gateway.)
 
-Spin up the throwaway sandbox. `--from` picks the sandbox image — here the pinned OpenClaw 2026.6.10 image (it's already pulled on the node; this lab won't actually run OpenClaw). `-- true` runs once and exits, so `create` **returns right away** while the supervisor keeps the box alive; `--no-tty` runs it non-interactively. (Pass a long-running command like `sleep 1800` instead and `create` would stay attached and block your shell.)
+Spin up the throwaway sandbox. `--from` picks the sandbox image — the pinned OpenClaw image (`$OPENCLAW_SANDBOX_IMAGE`, already pulled on the nodes; this lab won't actually run OpenClaw). `--policy` is mandatory in practice: a sandbox without a policy never becomes Ready. `--detach -- sleep infinity` gives the box a main process that keeps it alive, and returns your prompt as soon as it's running (a command that exits, like `true`, would leave the sandbox *Completed*). `--no-tty` runs it non-interactively.
 
 ```bash
 openshell sandbox create --name lab --no-tty \
-  --from ghcr.io/ansjindal/openclaw-sandbox:2026.6.10 \
-  -- true
+  --from "$OPENCLAW_SANDBOX_IMAGE" \
+  --policy ~/nemoclaw-openshift-launchable/policies/openclaw-sandbox.yaml \
+  --detach -- sleep infinity
 ```
 
 List your sandboxes:
@@ -38,7 +39,7 @@ This is OpenShell's observability: every gateway + sandbox action, structured. W
 openshell logs lab --source gateway
 ```
 
-You'll see `minted sandbox JWT`, `Creating sandbox in Kubernetes`, `issued gateway sandbox JWT` — the exact handshake from the architecture lesson. Filter and stream:
+You'll see `Creating sandbox in Kubernetes` and `issued generation-bound gateway sandbox JWT` — the sandbox's identity being minted, the handshake from the architecture lesson. Filter and stream:
 
 ```bash
 openshell logs lab --source sandbox --level debug
@@ -58,7 +59,7 @@ Each entry is an OCSF-style security event. In production you stream these to yo
 
 ## 4. Govern it — `policy`
 
-See the effective policy, its history, and (the fun part) **prove** a property of it:
+See the effective policy and its history:
 
 ```bash
 openshell policy get lab        # the policy currently in force
@@ -68,17 +69,23 @@ openshell policy get lab        # the policy currently in force
 openshell policy list lab       # revision history, with a status per revision
 ```
 
-Each policy change is a **revision**. In the history, a revision's **Status** is `Pending` until the sandbox's supervisor confirms it has loaded that revision — then it flips to `Effective`/`Active`. `policy get` always shows the policy *currently compiled and in force*. On a brand-new sandbox (or one whose initial command already exited, like our `-- true` box) you'll often see the first revision sit at `Pending` — the gateway has recorded it, but there's no live agent process that has re-read it yet. Create a real agent (Part IV) and you'll watch revisions go `Effective` as the running supervisor applies them.
+Each policy change is a **revision**. In the history, a revision's **Status** is `Pending` until the sandbox's supervisor confirms it has loaded that revision — then it flips to `Loaded` (an older one becomes `Superseded`; a revision the supervisor rejects shows `Failed`). `policy get` always shows the policy *currently compiled and in force*. Our `lab` box has a live supervisor (its main process is still running), so you'll watch the first revision go `Loaded` within seconds.
 
-`openshell policy` also does `set` / `update` (hot-reload egress on a running sandbox — no restart) and `prove` (formally check "can this agent ever reach host X?" — or get a counterexample). That's the audit→enforce loop from the policy lesson, live.
+`openshell policy` also does `set` / `update` (hot-reload egress on a running sandbox — no restart; `--wait` blocks until the supervisor has loaded it). That's the audit→enforce loop from the policy lesson, live.
 
-## 5. Where does its model come from? — `inference`
+## 5. Where does a model key come from? — `provider`
 
 ```bash
-openshell inference get
+openshell provider list
 ```
 
-The gateway's **privacy router**: register a backend as a *provider* (endpoint + key, held gateway-side), then `openshell inference set` points the route at a provider+model. Gateway-created sandboxes reach it through `inference.local` — so those agents never hold the upstream key, and the real host never appears in their egress policy. That's exactly how you'll wire up your own agent in Part IV.
+A **provider** is a credential the gateway holds (your inference key, a GitHub token, …), typed by a **provider profile** that says which host it may be sent to and which binaries may send it. Attach a provider to a sandbox (`sandbox create --provider …` or `openshell sandbox provider attach`) and the sandbox only ever sees a **placeholder**; the supervisor swaps in the real secret on egress to the allowed host. Our `lab` box has none attached:
+
+```bash
+openshell sandbox provider list lab
+```
+
+That's exactly how you'll give your own agent a model in Part IV — without ever handing it the key.
 
 ## 6. Expose a port — `forward` / `service`
 
@@ -98,5 +105,5 @@ openshell sandbox delete lab
 ```
 
 <Callout type="rh" title="You've now driven the whole control plane">
-Create, inspect, observe (logs/audit), govern (policy + prove), route inference, expose services — every part of OpenShell, by hand. <strong>That's</strong> the foundation. Next: build something on top of it.
+Create, inspect, observe (logs/audit), govern (policy), broker credentials (providers), expose services — every part of OpenShell, by hand. <strong>That's</strong> the foundation. Next: build something on top of it.
 </Callout>

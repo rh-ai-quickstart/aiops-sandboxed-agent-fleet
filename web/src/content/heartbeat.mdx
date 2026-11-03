@@ -33,13 +33,13 @@ openshell sandbox exec -n shifty -- sh -c 'openclaw config set agents.defaults.h
 - **`isolatedSession`** — run each beat in its **own session** so it doesn't pollute your interactive chat history.
 - **`lightContext`** — load a trimmed context (cheaper tokens) since a heartbeat usually doesn't need the full backstory.
 
-You can also scope it to working hours with **`activeHours`** (e.g. only beat 09:00–18:00) so a demo agent isn't burning tokens overnight.
+You can also scope it to working hours with **`activeHours`** (an object: `start`, `end`, optional `timezone`; e.g. only beat 09:00–18:00) so a demo agent isn't burning tokens overnight.
 
 Restart the gateway to apply (same command as in *Give It a Brain*):
 
 ```bash
 openshell sandbox exec -n shifty -- sh -c \
-  'cd /sandbox && [ -f gateway.pid ] && kill "$(cat gateway.pid)" 2>/dev/null; sleep 2; setsid nohup openclaw gateway run --port 30789 --bind lan --auth password --password openshell-wad26 --allow-unconfigured >/sandbox/gateway.log 2>&1 < /dev/null & echo $! > gateway.pid; sleep 8; grep -E "listening on ws|heartbeat" /sandbox/gateway.log | tail -3'
+  'cd /sandbox && [ -f gateway.pid ] && kill "$(cat gateway.pid)" 2>/dev/null; sleep 2; setsid nohup openclaw gateway run --port 30789 --bind lan --auth password --password '"${OPENCLAW_GATEWAY_PASSWORD:-openclaw}"' --allow-unconfigured >/sandbox/gateway.log 2>&1 < /dev/null & echo $! > gateway.pid; for i in $(seq 1 15); do grep -qE "\[gateway\] ready|listening on ws" /sandbox/gateway.log && break; sleep 2; done; grep -E "\[gateway\] ready|listening on ws|heartbeat" /sandbox/gateway.log | tail -3'
 ```
 
 ## 3. Watch a beat happen
@@ -55,7 +55,7 @@ Each beat is also an audited turn — you can see it in `openshell logs shifty` 
 Once you've watched a beat, set a saner cadence so the agent isn't taking a turn every minute (and optionally scope it to working hours), then restart the gateway again:
 
 ```bash
-openshell sandbox exec -n shifty -- sh -c 'openclaw config set agents.defaults.heartbeat.every 30m; openclaw config set agents.defaults.heartbeat.activeHours "09:00-18:00"'
+openshell sandbox exec -n shifty -- sh -c 'openclaw config set agents.defaults.heartbeat.every 30m; openclaw config set agents.defaults.heartbeat.activeHours "{\"start\":\"09:00\",\"end\":\"18:00\"}" --strict-json'
 ```
 
 <Callout type="rh" title="From assistant to operator">

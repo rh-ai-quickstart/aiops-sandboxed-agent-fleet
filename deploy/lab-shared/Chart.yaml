@@ -1,0 +1,5 @@
+apiVersion: v2
+name: lab-shared
+description: Shared, once-per-cluster pieces of the multi-attendee lab (image prepull DaemonSet)
+type: application
+version: 0.1.0

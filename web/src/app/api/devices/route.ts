@@ -9,7 +9,6 @@ import { spawn } from "node:child_process";
 // stdin reaches EOF. Under a piped child that leaves stdin open, it hangs forever — so we
 // spawn with stdin "ignore" (immediate EOF) and capture stdout. The phase-45 admin
 // bootstrap is what lets the operator approve at all. (Egress access-requests: /api/drafts.)
-const HOME = process.env.HOME ?? "/root";
 const KUBECONFIG = process.env.KUBECONFIG || "";
 const env = { ...process.env, ...(KUBECONFIG ? { KUBECONFIG } : {}), PATH: `${process.env.PATH ?? ""}:/usr/local/bin:/usr/bin` };
 const AGENT = process.env.OPENCLAW_AGENT_NAME || "shifty";
@@ -18,7 +17,7 @@ const validName = (n: string) => /^[a-z0-9][a-z0-9-]{0,40}$/.test(n);
 const validReqId = (s: unknown) => typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 
 function gwPassword(): string {
-  return process.env.OPENCLAW_GATEWAY_PASSWORD || "openshell-wad26";
+  return process.env.OPENCLAW_GATEWAY_PASSWORD || "openclaw";
 }
 
 // Run `openshell …` with stdin closed (so `sandbox exec` gets EOF and exits) + capture stdout.

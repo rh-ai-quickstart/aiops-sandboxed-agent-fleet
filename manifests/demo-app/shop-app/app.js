@@ -12,9 +12,22 @@
 const http = require("http");
 const crypto = require("crypto");
 
-const OTLP = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://tempo.monitoring.svc.cluster.local:4318";
+const OTLP = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://otel-collector-collector.observability-hub.svc.cluster.local:4318";
 const SERVICE = process.env.OTEL_SERVICE_NAME || "shop";
-const PAYMENT_URL = process.env.PAYMENT_URL || "http://payments.demo.svc.cluster.local:8080/charge";
+const PAYMENT_URL = process.env.PAYMENT_URL || "http://payments:8080/charge"; // same namespace
+
+// OTEL resource attributes: service.name + anything in OTEL_RESOURCE_ATTRIBUTES
+// ("k=v,k2=v2", e.g. k8s.namespace.name from the downward API) so the shared Tempo can be
+// filtered per namespace: { resource.k8s.namespace.name = "<ns>" }.
+const RESOURCE_ATTRS = [{ key: "service.name", value: { stringValue: SERVICE } }];
+for (const kv of (process.env.OTEL_RESOURCE_ATTRIBUTES || "").split(",")) {
+  const i = kv.indexOf("=");
+  if (i <= 0) continue;
+  const k = kv.slice(0, i).trim(), v = decodeURIComponent(kv.slice(i + 1).trim());
+  if (k && v && k !== "service.name") RESOURCE_ATTRS.push({ key: k, value: { stringValue: v } });
+}
+if (process.env.K8S_NAMESPACE && !RESOURCE_ATTRS.some((a) => a.key === "k8s.namespace.name"))
+  RESOURCE_ATTRS.push({ key: "k8s.namespace.name", value: { stringValue: process.env.K8S_NAMESPACE } });
 
 const hrNs = () => BigInt(Date.now()) * 1000000n; // ms→ns
 const id = (n) => crypto.randomBytes(n).toString("hex");
@@ -39,7 +52,7 @@ function metrics() {
 // ---- trace export (OTLP/HTTP JSON, fire-and-forget) ----
 const sv = (s) => ({ stringValue: String(s) });
 function emitTrace(spans) {
-  const body = JSON.stringify({ resourceSpans: [{ resource: { attributes: [{ key: "service.name", value: sv(SERVICE) }] },
+  const body = JSON.stringify({ resourceSpans: [{ resource: { attributes: RESOURCE_ATTRS },
     scopeSpans: [{ scope: { name: "shop-app" }, spans }] }] });
   fetch(`${OTLP}/v1/traces`, { method: "POST", headers: { "content-type": "application/json" }, body })
     .catch((e) => console.log(JSON.stringify({ level: "warn", msg: "trace export failed", err: String(e).slice(0, 80) })));
@@ -86,4 +99,4 @@ http.createServer((req, res) => {
   if (path === "/metrics") { res.writeHead(200, { "content-type": "text/plain" }); return res.end(metrics()); }
   if (path === "/checkout" || path === "/") return handleCheckout(req, res);
   res.writeHead(404); res.end("not found");
-}).listen(8080, () => console.log(JSON.stringify({ level: "info", msg: "shop-app listening", port: 8080, service: SERVICE, payment_url: PAYMENT_URL })));
+}).listen(8080, () => console.log(JSON.stringify({ level: "info", msg: "shop-app listening", port: 8080, service: SERVICE, payment_url: PAYMENT_URL, namespace: process.env.K8S_NAMESPACE || "" })));

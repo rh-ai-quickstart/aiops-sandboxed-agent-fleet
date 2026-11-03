@@ -20,14 +20,16 @@ function openshell(args: string[], timeoutMs = 12_000): Promise<{ code: number |
 }
 
 async function agentInfo(name: string) {
-  // egress: parse the effective policy's network_policies endpoints
-  const p = await openshell(["policy", "get", name, "--full", "-o", "json"]);
-  let egress: string[] = []; let ready = false;
+  // egress: parse the sandbox's OWN policy (--base: without the provider-composed inference
+  // endpoint every agent shares) → the one backend each specialist may reach.
+  const p = await openshell(["policy", "get", name, "--base", "-o", "json"]);
+  const egress: string[] = []; let ready = false;
   try {
     const clean = p.out.split("\n").filter((l) => !/UNDICI|trace-warn/.test(l)).join("\n");
     const j = JSON.parse(clean.slice(clean.indexOf("{")));
-    const nps = j.policy?.network_policies ?? {};
-    for (const k of Object.keys(nps)) for (const e of nps[k].endpoints ?? []) egress.push(`${e.host}:${e.port}`);
+    type Ep = { host?: string; port?: number; ports?: number[] };
+    const nps: Record<string, { endpoints?: Ep[] }> = j.policy?.network_policies ?? {};
+    for (const k of Object.keys(nps)) for (const e of nps[k].endpoints ?? []) egress.push(`${e.host}:${e.ports?.length ? e.ports.join(",") : e.port}`);
     ready = true; // policy fetch succeeded → the sandbox exists and the gateway knows it
   } catch { /* not found / not ready */ }
   // liveness + persona: read the agent's SOUL.md (the role it was given). A successful read

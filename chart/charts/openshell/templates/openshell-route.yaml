@@ -1,3 +1,9 @@
+{{- /*
+Optional public Route to the gateway. Disabled by default (route.enabled=false): the
+gateway runs plaintext with allowUnauthenticatedUsers, so exposing it lets anyone who
+knows the hostname create sandboxes. Edge TLS + HTTP/2 are required for gRPC.
+*/ -}}
+{{- if .Values.route.enabled }}
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
@@ -21,3 +27,4 @@ spec:
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
+{{- end }}

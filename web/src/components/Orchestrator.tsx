@@ -2,6 +2,9 @@
 import { useState } from "react";
 import { Play, Loader2, ListOrdered, CheckCircle2 } from "lucide-react";
 import { streamOrchestrate } from "@/lib/orchestrateStream";
+import { useLabEnv } from "@/lib/useLabEnv";
+
+const taskFor = (ns: string) => `The 'shop' deployment in namespace ${ns} is unhealthy — investigate with logs and metrics, and report the root cause.`;
 
 type Step = { agent: string; subtask: string; out?: string };
 type TL = { agent: string; status: "queued" | "running" | "done"; ms?: number; retried?: boolean };
@@ -10,7 +13,10 @@ type TL = { agent: string; status: "queued" | "running" | "done"; ms?: number; r
 // → dispatch each step to a sealed specialist agent (in parallel) → the writer synthesizes.
 // Streams a LIVE TIMELINE of each agent so you watch it happen (and long runs never time out).
 export function Orchestrator() {
-  const [task, setTask] = useState("The 'shop' deployment in namespace demo is unhealthy — investigate with logs and metrics, and report the root cause.");
+  const lab = useLabEnv();
+  // null = untouched → the default task follows this instance's demo namespace (from /api/lab)
+  const [edited, setEdited] = useState<string | null>(null);
+  const task = edited ?? taskFor(lab.demoNamespace);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [fleet, setFleet] = useState<string[]>([]);
@@ -41,7 +47,7 @@ export function Orchestrator() {
   return (
     <div className="my-6 rounded-xl border border-[var(--color-line)] bg-[var(--color-panel)] p-4">
       <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-nv-bright)]"><ListOrdered size={15} /> Orchestrate the fleet</div>
-      <textarea value={task} onChange={(e) => setTask(e.target.value)} rows={2}
+      <textarea value={task} onChange={(e) => setEdited(e.target.value)} rows={2}
         className="mt-3 w-full rounded-lg border border-[var(--color-line-2)] bg-[var(--color-bg)] p-2.5 text-sm" />
       <div className="mt-2 flex items-center gap-3">
         <button onClick={run} disabled={busy}

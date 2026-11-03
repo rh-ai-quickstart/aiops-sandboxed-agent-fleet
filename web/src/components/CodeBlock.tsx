@@ -1,11 +1,12 @@
 "use client";
-import { useState, useEffect, type ReactNode, isValidElement } from "react";
+import { useState, useMemo, type ReactNode, isValidElement } from "react";
 import hljs from "highlight.js/lib/core";
 import bash from "highlight.js/lib/languages/bash";
 import yaml from "highlight.js/lib/languages/yaml";
 import json from "highlight.js/lib/languages/json";
 import "highlight.js/styles/github-dark.css";
 import { runInShell } from "@/lib/labBus";
+import { useIsClient } from "@/lib/clientStore";
 
 hljs.registerLanguage("bash", bash);
 hljs.registerLanguage("yaml", yaml);
@@ -61,15 +62,15 @@ export function CodeBlock({ children }: { children?: ReactNode }) {
   const label = isRef ? "reference" : (lang || "shell");
 
   const grammar = hljsLang(lang);
-  // Highlight AFTER mount, not during render. Server (and the client's first render)
-  // emit plain text, so hydration always matches; the colored HTML is swapped in by the
-  // effect. Highlighting during render meant SSR shipped dangerouslySetInnerHTML that the
-  // client could mismatch on — which left some blocks rendering blank after hydration.
-  const [html, setHtml] = useState<string | null>(null);
-  useEffect(() => {
-    if (!grammar) { setHtml(null); return; }
-    try { setHtml(hljs.highlight(code, { language: grammar }).value); } catch { setHtml(null); }
-  }, [code, grammar]);
+  // Highlight only once hydrated. The server (and the client's hydration render) emit plain
+  // text, so hydration always matches; the colored HTML replaces it on the next client render.
+  // Highlighting during SSR shipped dangerouslySetInnerHTML that the client could mismatch on —
+  // which left some blocks rendering blank after hydration.
+  const isClient = useIsClient();
+  const html = useMemo(() => {
+    if (!isClient || !grammar) return null;
+    try { return hljs.highlight(code, { language: grammar }).value; } catch { return null; }
+  }, [isClient, code, grammar]);
 
   return (
     <div className="group relative my-5 overflow-hidden rounded-xl border border-[var(--color-line)] bg-[var(--color-code-bg)]">

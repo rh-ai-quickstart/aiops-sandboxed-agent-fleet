@@ -1,0 +1,7 @@
+# Used by BuildKit/buildah for `-f web/Dockerfile` builds from the repo root.
+**/node_modules
+**/.next
+web/test-results
+web/playwright-report
+**/.env
+.git

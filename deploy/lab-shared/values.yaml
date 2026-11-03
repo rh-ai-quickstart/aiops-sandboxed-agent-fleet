@@ -1,0 +1,20 @@
+# Installed by scripts/lab.sh into namespace `lab-shared`:
+#   helm upgrade --install lab-shared deploy/lab-shared -n lab-shared --set-json images=[...]
+# lab.sh fills `images` from the chart values (sandbox, OpenShell gateway/supervisor/sandbox,
+# workshop, verdaccio, event-exporter, demo app images) and `nodeSelector` from
+# LAB_NODE_SELECTOR, so every lab node has the multi-GB sandbox image before attendees
+# create sandboxes (also new nodes from a scaled-up MachineSet).
+
+# Images to keep warm on every selected node.
+images: []
+
+# e.g. {"node-role.kubernetes.io/lab": ""} — empty = every schedulable worker.
+nodeSelector: {}
+
+# e.g. [{name: ghcr-pull}] (lab.sh creates it from GHCR_TOKEN).
+imagePullSecrets: []
+
+# Statically linked busybox copied into a shared emptyDir, so even distroless images
+# (gateway, supervisor) can run `/shared/busybox true` and finish their init container.
+busyboxImage: docker.io/library/busybox:1.37-musl
+pauseImage: registry.k8s.io/pause:3.10

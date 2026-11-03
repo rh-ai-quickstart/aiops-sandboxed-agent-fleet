@@ -1,12 +1,12 @@
 dependencies:
 - name: openshell
   repository: ""
-  version: 0.1.0
+  version: 0.2.0
 - name: monitoring
   repository: ""
   version: 0.2.0
 - name: workshop
   repository: ""
-  version: 0.1.0
-digest: sha256:d1b760567ff5c700c8ad244a06fd2c50bd462c0484d8b04784f6e0053122527d
-generated: "2026-09-08T15:54:47.295088526+02:00"
+  version: 0.2.0
+digest: sha256:22f973a736c0a905559fcadf12e0f2ae7c8fbaf5993d1e9b2c1dec77d6b65959
+generated: "2026-11-02T15:20:31.003953+01:00"

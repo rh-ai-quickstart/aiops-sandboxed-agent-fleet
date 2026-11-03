@@ -11,27 +11,27 @@ openshell sandbox exec -n shifty -- sh -c \
 
 ```bash
 openshell sandbox exec -n shifty -- sh -c \
-  'cd /sandbox && [ -f gateway.pid ] && kill "$(cat gateway.pid)" 2>/dev/null; sleep 2; setsid nohup openclaw gateway run --port 30789 --bind lan --auth password --password openshell-wad26 --allow-unconfigured >/sandbox/gateway.log 2>&1 < /dev/null & echo $! > gateway.pid; sleep 8; grep -E "listening on ws" /sandbox/gateway.log | tail -1'
+  'cd /sandbox && [ -f gateway.pid ] && kill "$(cat gateway.pid)" 2>/dev/null; sleep 2; setsid nohup openclaw gateway run --port 30789 --bind lan --auth password --password '"${OPENCLAW_GATEWAY_PASSWORD:-openclaw}"' --allow-unconfigured >/sandbox/gateway.log 2>&1 < /dev/null & echo $! > gateway.pid; for i in $(seq 1 15); do grep -qE "\[gateway\] ready|listening on ws" /sandbox/gateway.log && break; sleep 2; done; grep -E "\[gateway\] ready|listening on ws" /sandbox/gateway.log | tail -1'
 ```
 
-The endpoint rides on the **same `:30789`** as the Control UI and WebSocket — the port you already exposed with `openshell forward` in *Open the Agent UI*. The port is sandbox-internal; `openshell forward` bridges it to your lab shell at `http://127.0.0.1:30789/v1/chat/completions`.
+The endpoint rides on the **same `:30789`** as the Control UI and WebSocket — the port the workshop pod's `openclaw-forward` sidecar bridges with `openshell forward` (see *Open the Agent UI*). The port is sandbox-internal; the forward makes it reachable from your lab shell at `http://127.0.0.1:30789/v1/chat/completions`.
 
 ## 2. Call it like OpenAI
 
-Authenticate with your **gateway password** as a bearer token, and use the model id **`openclaw`** — the gateway routes that to whatever model your agent is configured with (your inference endpoint, via the privacy router). From the lab shell:
+Authenticate with your **gateway password** as a bearer token, and use the model id **`openclaw`** — the gateway routes that to whatever model your agent is configured with (your inference endpoint, reached with the provider's placeholder key). From the lab shell:
 
 ```bash
 curl -s http://127.0.0.1:30789/v1/chat/completions \
-  -H "Authorization: Bearer openshell-wad26" \
+  -H "Authorization: Bearer ${OPENCLAW_GATEWAY_PASSWORD:-openclaw}" \
   -H "Content-Type: application/json" \
   -d '{"model":"openclaw","messages":[{"role":"user","content":"Reply with exactly: PONG"}]}' \
   | jq -r '.choices[0].message.content'
 ```
 
-You get back `PONG`. That round-trip went: your `curl` → the in-sandbox OpenClaw gateway → `inference.local` → the OpenShell privacy router (real key injected) → your endpoint → back — **the full sealed chain, behind an OpenAI-shaped API.**
+You get back `PONG`. That round-trip went: your `curl` → the forward → the in-sandbox OpenClaw gateway → the sandbox's egress proxy (the supervisor swaps the placeholder for your real key) → your endpoint → back — **the full sealed chain, behind an OpenAI-shaped API.**
 
 <Callout type="note" title="Point any OpenAI client at it">
-Anything that takes an OpenAI base URL works. In code: set <code>base_url="http://127.0.0.1:30789/v1"</code> (the forwarded sandbox port), <code>api_key="openshell-wad26"</code>, <code>model="openclaw"</code>, and call <code>chat.completions.create(...)</code> as usual. Your script never sees your real inference key, and the agent stays inside its sandbox.
+Anything that takes an OpenAI base URL works. In code: set <code>base_url="http://127.0.0.1:30789/v1"</code> (the forwarded sandbox port), <code>api_key</code> = your gateway password (<code>openclaw</code> by default on a single-user cluster), <code>model="openclaw"</code>, and call <code>chat.completions.create(...)</code> as usual. Your script never sees your real inference key, and the agent stays inside its sandbox.
 </Callout>
 
 <Callout type="note" title="Why this is more than a model proxy">

@@ -2,42 +2,41 @@
 import { useEffect, useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { Terminal } from "./Terminal";
 import { PanelRightClose, PanelRightOpen, RotateCcw, TerminalSquare } from "lucide-react";
+import { useStoredString } from "@/lib/clientStore";
+
+const DEFAULT_PCT = 44;
+const clampPct = (n: number) => Math.min(68, Math.max(26, n));
 
 // Hands-on lessons: content on the left, a live lab shell on the right.
 // The shell column is draggable (resize width) and sticky (stays in view on scroll).
 // On small screens it stacks below the content.
 export function LabSplit({ children }: { children: ReactNode; slug?: string }) {
-  const [shellPct, setShellPct] = useState(44); // % width of the shell column (desktop)
+  // % width of the shell column (desktop), remembered across pages
+  const [pctRaw, setPctRaw] = useStoredString("oclaw:shell-pct", String(DEFAULT_PCT));
+  const savedPct = Number(pctRaw);
+  const shellPct = Number.isFinite(savedPct) && savedPct >= 26 && savedPct <= 68 ? savedPct : DEFAULT_PCT;
+  const setShellPct = (n: number) => setPctRaw(String(clampPct(n)));
   // Hidden by default — the shell appears only when the reader runs a command
   // (Run-in-shell) or explicitly opens it. An explicit open/close is remembered;
   // an auto-open from a command is transient (next page starts hidden again).
-  const [show, setShow] = useState(false);
+  const [savedShow, setSavedShow] = useStoredString("oclaw:shell-open", "false");
+  const [autoOpen, setAutoOpen] = useState(false);
+  const show = autoOpen || savedShow === "true";
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Explicit user toggle — remembered across pages.
   function setShowManual(next: boolean) {
-    setShow(next);
-    try { window.localStorage.setItem("oclaw:shell-open", String(next)); } catch {}
+    setAutoOpen(false);
+    setSavedShow(String(next));
   }
-
-  useEffect(() => {
-    const savedShow = window.localStorage.getItem("oclaw:shell-open");
-    const savedPct = Number(window.localStorage.getItem("oclaw:shell-pct"));
-    if (savedShow === "true") setShow(true); // only an explicit prior open reveals it
-    if (Number.isFinite(savedPct) && savedPct >= 26 && savedPct <= 68) setShellPct(savedPct);
-  }, []);
 
   // Running a command (runInShell → oclaw:start-shell) reveals the shell so the
   // reader can see the output. This open is transient — it isn't persisted.
   useEffect(() => {
-    const onStart = () => setShow(true);
+    const onStart = () => setAutoOpen(true);
     window.addEventListener("oclaw:start-shell", onStart);
     return () => window.removeEventListener("oclaw:start-shell", onStart);
   }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem("oclaw:shell-pct", String(shellPct));
-  }, [shellPct]);
 
   function startDrag(e: React.MouseEvent) {
     e.preventDefault();
@@ -46,7 +45,7 @@ export function LabSplit({ children }: { children: ReactNode; slug?: string }) {
       if (!el) return;
       const r = el.getBoundingClientRect();
       const pct = ((r.right - ev.clientX) / r.width) * 100;
-      setShellPct(Math.min(68, Math.max(26, pct)));
+      setShellPct(pct);
     };
     const up = () => {
       document.body.style.cursor = "";
@@ -92,7 +91,7 @@ export function LabSplit({ children }: { children: ReactNode; slug?: string }) {
             </span>
             <span className="ml-auto hidden text-[10px] text-[var(--color-fg-mut)] sm:inline">{Math.round(shellPct)}%</span>
             <button
-              onClick={() => setShellPct(44)}
+              onClick={() => setShellPct(DEFAULT_PCT)}
               className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--color-line-2)] text-[var(--color-fg-mut)] transition hover:bg-[var(--color-bg-2)] hover:text-[var(--color-fg)]"
               title="Reset shell width"
             >

@@ -4,21 +4,22 @@ import { DIAGRAM as C } from "./palette";
 // in-cluster registry — either authored fresh or vetted-and-mirrored from
 // ClawHub — and the agent's sole egress for installs is that registry.
 // Direct ClawHub / public-npm access from the sandbox is denied by policy.
+const W = 900, H = 412;
+const Node = ({ x, y, w, h = 64, fill, stroke, title, sub, dash }: { x: number; y: number; w: number; h?: number; fill: string; stroke: string; title: string; sub: string; dash?: boolean }) => (
+  <g>
+    <rect x={x} y={y} width={w} height={h} rx={12} fill={fill} stroke={stroke} strokeWidth={1.6} strokeDasharray={dash ? "5 4" : undefined} />
+    <text x={x + w / 2} y={y + (sub ? h / 2 - 2 : h / 2 + 4)} fontSize={13.5} fill={C.ink} textAnchor="middle" fontWeight={700}>{title}</text>
+    {sub && <text x={x + w / 2} y={y + h / 2 + 16} fontSize={10.6} fill={C.sub} textAnchor="middle">{sub}</text>}
+  </g>
+);
+const Arrow = ({ x1, y1, x2, y2, label, color = C.ctrl, dash, lx, ly }: { x1: number; y1: number; x2: number; y2: number; label?: string; color?: string; dash?: boolean; lx?: number; ly?: number }) => (
+  <g>
+    <path d={`M${x1},${y1} L${x2},${y2}`} stroke={color} strokeWidth={2} fill="none" markerEnd="url(#ssc_ar)" strokeDasharray={dash ? "6 5" : undefined} />
+    {label && <text x={lx ?? (x1 + x2) / 2} y={ly ?? Math.min(y1, y2) - 8} fontSize={10.3} fill={color} textAnchor="middle" fontWeight={600}>{label}</text>}
+  </g>
+);
+
 export function SkillSupplyChain() {
-  const W = 900, H = 412;
-  const Node = ({ x, y, w, h = 64, fill, stroke, title, sub, dash }: { x: number; y: number; w: number; h?: number; fill: string; stroke: string; title: string; sub: string; dash?: boolean }) => (
-    <g>
-      <rect x={x} y={y} width={w} height={h} rx={12} fill={fill} stroke={stroke} strokeWidth={1.6} strokeDasharray={dash ? "5 4" : undefined} />
-      <text x={x + w / 2} y={y + (sub ? h / 2 - 2 : h / 2 + 4)} fontSize={13.5} fill={C.ink} textAnchor="middle" fontWeight={700}>{title}</text>
-      {sub && <text x={x + w / 2} y={y + h / 2 + 16} fontSize={10.6} fill={C.sub} textAnchor="middle">{sub}</text>}
-    </g>
-  );
-  const Arrow = ({ x1, y1, x2, y2, label, color = C.ctrl, dash, lx, ly }: { x1: number; y1: number; x2: number; y2: number; label?: string; color?: string; dash?: boolean; lx?: number; ly?: number }) => (
-    <g>
-      <path d={`M${x1},${y1} L${x2},${y2}`} stroke={color} strokeWidth={2} fill="none" markerEnd="url(#ssc_ar)" strokeDasharray={dash ? "6 5" : undefined} />
-      {label && <text x={lx ?? (x1 + x2) / 2} y={ly ?? Math.min(y1, y2) - 8} fontSize={10.3} fill={color} textAnchor="middle" fontWeight={600}>{label}</text>}
-    </g>
-  );
   return (
     <figure className="my-6 overflow-hidden rounded-xl border border-[var(--color-line)]">
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" fontFamily={C.font} role="img" aria-label="Governed skill supply chain">
@@ -42,7 +43,7 @@ export function SkillSupplyChain() {
 
         {/* registry (chokepoint) */}
         <Node x={350} y={150} w={200} h={120} fill={C.white} stroke={C.nvidia} title="Private registry 📦" sub="Verdaccio · in-cluster" />
-        <text x={450} y={232} fontSize={10.2} fill={C.use} textAnchor="middle" fontWeight={600}>registry.openshell.svc:4873</text>
+        <text x={450} y={232} fontSize={10.2} fill={C.use} textAnchor="middle" fontWeight={600}>registry.&lt;ns&gt;.svc.cluster.local:4873</text>
         <text x={450} y={250} fontSize={9.8} fill={C.sub} textAnchor="middle">uplinks npm deps · single egress</text>
 
         {/* publish arrows into registry */}

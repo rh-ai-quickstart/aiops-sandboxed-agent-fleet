@@ -1,0 +1,66 @@
+{{- /*
+Image prepull: one init container per image (pulled with IfNotPresent, then exits via a
+static busybox), then a pause container keeps the pod — and so the images — on the node.
+*/ -}}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: lab-prepull
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: lab-prepull
+    app.kubernetes.io/part-of: nemoclaw
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: lab-prepull
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 25% }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lab-prepull
+        app.kubernetes.io/part-of: nemoclaw
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 1
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      initContainers:
+        - name: busybox
+          image: {{ .Values.busyboxImage }}
+          imagePullPolicy: IfNotPresent
+          command: ["cp", "/bin/busybox", "/shared/busybox"]
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } }
+          resources: { requests: { cpu: 5m, memory: 8Mi }, limits: { memory: 32Mi } }
+          volumeMounts: [ { name: shared, mountPath: /shared } ]
+        {{- range $i, $img := .Values.images }}
+        - name: {{ printf "pull-%02d" $i }}
+          image: {{ $img | quote }}
+          imagePullPolicy: IfNotPresent
+          command: ["/shared/busybox", "true"]
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } }
+          resources: { requests: { cpu: 5m, memory: 8Mi }, limits: { memory: 32Mi } }
+          volumeMounts: [ { name: shared, mountPath: /shared } ]
+        {{- end }}
+      containers:
+        - name: pause
+          image: {{ .Values.pauseImage }}
+          imagePullPolicy: IfNotPresent
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } }
+          resources:
+            requests: { cpu: 1m, memory: 4Mi }
+            limits: { memory: 16Mi }
+      volumes:
+        - name: shared
+          emptyDir: { sizeLimit: 16Mi }

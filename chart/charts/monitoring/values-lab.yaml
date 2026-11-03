@@ -1,0 +1,11 @@
+# Lab (multi-tenant) overrides for the shared monitoring release. scripts/lab.sh installs it
+# with `-f chart/charts/monitoring/values.yaml -f chart/charts/monitoring/values-lab.yaml`;
+# everything not set here comes from values.yaml.
+grafana:
+  grafana.ini:
+    # Attendees browse dashboards anonymously as Viewer (read-only); the admin password
+    # stays with the facilitators. Dashboards pick the attendee via ?var-ns=<user>-openshell
+    # and ?var-demo=<user>-demo.
+    auth.anonymous:
+      enabled: true
+      org_role: Viewer

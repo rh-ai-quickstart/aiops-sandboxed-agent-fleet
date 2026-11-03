@@ -1,0 +1,51 @@
+# Models-as-a-Service access for the lab (rendered by scripts/maas.sh with envsubst).
+# - Group nemoclaw-lab: identities allowed to use the model and mint API keys (the lab admin mints one
+#   key per attendee; see scripts/maas.sh keys).
+# - MaaSModelRef publishes the LLMInferenceService through the MaaS gateway: https://maas.<apps-domain>/maas-models/nemotron-3-nano/v1 (model id: nemotron-3-nano)
+# - MaaSAuthPolicy grants the group access; MaaSSubscription sets the token rate limit.
+---
+apiVersion: user.openshift.io/v1
+kind: Group
+metadata:
+  name: nemoclaw-lab
+users:
+  - ${MAAS_KEY_OWNER}
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSModelRef
+metadata:
+  name: nemotron-3-nano
+  namespace: maas-models
+spec:
+  modelRef:
+    kind: LLMInferenceService
+    name: nemotron-3-nano
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSAuthPolicy
+metadata:
+  name: nemoclaw-lab
+  namespace: models-as-a-service
+spec:
+  modelRefs:
+    - name: nemotron-3-nano
+      namespace: maas-models
+  subjects:
+    groups:
+      - name: nemoclaw-lab
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: nemoclaw-lab
+  namespace: models-as-a-service
+spec:
+  owner:
+    groups:
+      - name: nemoclaw-lab
+  modelRefs:
+    - name: nemotron-3-nano
+      namespace: maas-models
+      tokenRateLimits:
+        - limit: ${MAAS_TOKENS_PER_MINUTE}
+          window: 1m

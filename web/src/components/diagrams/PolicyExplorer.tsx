@@ -28,7 +28,7 @@ const SECS: Sec[] = [
     detail: <>WHICH executables may use this endpoint — the proxy reads <code>/proc/&lt;pid&gt;/exe</code> and SHA-256-hashes the calling binary (trust-on-first-use). <code>git → github ✓</code> but <code>curl → anywhere ✗</code>: this is what stops data exfil through an unexpected binary.</> },
   { id: "rules", color: PURPLE, kind: "dynamic", title: "rules", enforce: "L7 method+path",
     lines: ["    rules:", "      - method: GET", "        path: /repos/**        # glob; * method forbidden"],
-    detail: <>The L7 allow-list: only these HTTP methods + path globs. A read-only copilot gets <code>GET /api/**</code> and nothing else — so even a hijacked agent can't <code>DELETE</code>. Wildcard <code>*</code> methods are rejected.</> },
+    detail: <>The L7 allow-list: only these HTTP methods + path globs. A read-only copilot gets <code>GET /api/**</code> and nothing else — so even a hijacked agent can&apos;t <code>DELETE</code>. Wildcard <code>*</code> methods are rejected.</> },
   { id: "fs", color: RED, kind: "static", title: "filesystem", enforce: "Landlock LSM (kernel)",
     lines: ["filesystem:", "  read_only:  [/usr, /lib, /etc]", "  read_write: [/sandbox, /tmp]"],
     detail: <>Kernel-enforced via <strong>Landlock LSM</strong> — paths not listed are simply inaccessible, below the app layer. Guards against binary tampering + credential theft. <strong>Static</strong>: locked at creation; changing it recreates the sandbox.</> },
@@ -73,7 +73,7 @@ export function PolicyExplorer() {
         </div>
       </div>
       <p className="mt-2 text-[11px] text-[var(--color-fg-mut)]">
-        Two halves: <strong>network_policies</strong> hot-reload on a running sandbox; <strong>filesystem</strong> + <strong>process</strong> lock at creation (kernel-level: Landlock + seccomp). Together that's the defense-in-depth that bounds an autonomous agent.
+        Two halves: <strong>network_policies</strong> hot-reload on a running sandbox; <strong>filesystem</strong> + <strong>process</strong> lock at creation (kernel-level: Landlock + seccomp). Together that&apos;s the defense-in-depth that bounds an autonomous agent.
       </p>
     </figure>
   );

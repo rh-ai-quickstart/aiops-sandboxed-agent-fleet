@@ -1,11 +1,11 @@
 apiVersion: v2
 name: openshell
-description: OpenShell gateway wrapper — SCC grants, Route, sandbox prepull, skill registry
+description: OpenShell gateway wrapper — optional Route, sandbox prepull, skill registry
 type: application
-version: 0.1.0
+version: 0.2.0
 
 dependencies:
   - name: helm-chart
-    version: "0.0.71"
+    version: "0.1.6"
     repository: "oci://ghcr.io/nvidia/openshell"
     alias: upstream

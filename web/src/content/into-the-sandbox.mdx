@@ -3,18 +3,22 @@ You created `shifty` with `openshell sandbox create`. Each sandbox is reconciled
 ## A sandbox is a pod
 
 ```bash
-oc -n openshell get pod shifty -o wide
+oc -n "$OPENSHELL_NS" get pod default--shifty -o wide
 ```
 
-It's a normal pod with an `agent` container. But the OpenClaw agent runs in a **private network namespace** the supervisor built — not the pod's main namespace.
+It's a normal pod (named `default--shifty` — the gateway prefixes the workspace) with an `agent` container. Its supervisor runs in a companion `os-supervisor-…` pod. And the OpenClaw agent runs in a **private network namespace** the supervisor built — not the pod's main namespace.
 
 ## Two ways in
 
 **`oc exec`** lands in the pod's *main* namespace — full filesystem, but **not** the agent's sealed network:
 
 ```bash
-oc -n openshell exec shifty -c agent -- sh -c 'echo HTTPS_PROXY="$HTTPS_PROXY"; ls /sandbox >/dev/null 2>&1 && echo "can see /sandbox" || echo "no /sandbox here"'
+oc -n "$OPENSHELL_NS" exec default--shifty -c agent -- sh -c 'echo HTTPS_PROXY="$HTTPS_PROXY"; ls /sandbox >/dev/null 2>&1 && echo "can see /sandbox" || echo "no /sandbox here"'
 ```
+
+<Callout type="warn" title="Shared lab? Expect Forbidden here">
+In a multi-user lab your ServiceAccount is <strong>not allowed</strong> to <code>oc exec</code> into sandbox pods — the command above returns <code>Forbidden</code> (<code>cannot create resource "pods/exec"</code>). That's RBAC doing its job: a raw exec would bypass the gateway, its audit trail and the sandbox seal. Use <code>openshell sandbox exec</code> (next) — it goes through the gateway and lands inside the seal. On a single-user cluster the <code>oc exec</code> works and shows you the outer shell.
+</Callout>
 
 **`openshell sandbox exec`** lands in the *agent's* sealed context — Landlock filesystem (`/sandbox`, `/tmp`) and the governed egress proxy. This is where the agent actually lives:
 

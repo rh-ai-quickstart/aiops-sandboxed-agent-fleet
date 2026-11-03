@@ -1,29 +1,6 @@
 #!/usr/bin/env bash
-# Top-level orchestrator — deploys the NemoClaw workshop stack onto an existing
-# OpenShift cluster. Runs preflight, then the deploy script, then optional extras.
+# Kept for backwards compatibility: the single-instance deployment is scripts/deploy.sh
+# (the workshop site is part of the Helm chart). For a multi-attendee lab use scripts/lab.sh.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib/common.sh
-source "$HERE/lib/common.sh"
-load_env
-
-log "NemoClaw-on-OpenShift: starting deployment"
-
-# Core deployment (preflight, Helm chart, namespaces, CRDs, demo app).
-"$HERE/deploy.sh"
-
-# Interactive workshop website (Next.js + live shell). Set DEPLOY_WORKSHOP=false to skip.
-if [[ "${DEPLOY_WORKSHOP:-true}" == "true" ]]; then
-  "$HERE/70-workshop.sh" || warn "phase 70 (workshop site) failed — non-fatal; the stack is still up."
-fi
-
-
-# Auto-detect the cluster's apps domain for final summary.
-DOMAIN="${CLUSTER_APPS_DOMAIN:-$(oc get ingresses.config/cluster -o jsonpath='{.spec.domain}' 2>/dev/null || echo '<cluster-apps-domain>')}"
-
-log "Done. Platform is up — now build your agent in the workshop:"
-log "  Workshop:  https://workshop-openshell.${DOMAIN}/"
-log "  Grafana:   https://grafana-monitoring.${DOMAIN}/grafana"
-log "  Console:   https://console-openshift-console.${DOMAIN}/"
-log "  -> Create your OpenClaw agent hands-on in the workshop (it is NOT pre-provisioned)."
-log "     Once created, its UI password is: ${OPENCLAW_GATEWAY_PASSWORD:-openclaw}"
+exec "$HERE/deploy.sh" "$@"

@@ -1,0 +1,24 @@
+# Instances for Red Hat Connectivity Link (Kuadrant) and LeaderWorkerSet, required by OpenShift AI 3.5
+# LLMInferenceService / Models-as-a-Service.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kuadrant-system
+---
+apiVersion: kuadrant.io/v1beta1
+kind: Kuadrant
+metadata:
+  name: kuadrant
+  namespace: kuadrant-system
+spec: {}
+---
+# From the leader-worker-set v1.0.1 CSV alm-examples.
+apiVersion: operator.openshift.io/v1
+kind: LeaderWorkerSetOperator
+metadata:
+  name: cluster
+spec:
+  logLevel: Normal
+  managementState: Managed
+  operatorLogLevel: Normal

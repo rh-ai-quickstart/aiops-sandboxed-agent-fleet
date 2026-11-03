@@ -2,10 +2,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { RefreshCw, Server, Box, ScrollText, Shield, Cpu, KeyRound, ShieldCheck } from "lucide-react";
 
-type Sandbox = { name: string; phase: string; ready: boolean; restarts: number; created: string | null };
+type Sandbox = { name: string; object?: string; phase: string; ready: boolean; restarts: number; created: string | null };
 type Provider = { name: string; type: string; credentialKeys: string[]; configKeys: string[] };
-type Inference = { configured: boolean; provider: string | null; model: string | null; version: string | null; providers: Provider[] };
-type Data = { ok: boolean; error?: string; gateway?: { ready: boolean; version: string | null }; sandboxes?: Sandbox[]; inference?: Inference | null };
+type Inference = {
+  configured: boolean; provider: string | null; profile: string | null; model: string | null; endpointHost: string | null;
+  agent: string; attached: string[]; providers: Provider[];
+};
+type Data = { ok: boolean; error?: string; namespace?: string; gateway?: { ready: boolean; version: string | null }; sandboxes?: Sandbox[]; inference?: Inference | null };
 
 function age(iso: string | null): string {
   if (!iso) return "—";
@@ -51,48 +54,59 @@ export function LiveOpenShell() {
   const [sel, setSel] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("logs");
   const [source, setSource] = useState<"all" | "gateway" | "sandbox">("all");
-  const [detail, setDetail] = useState<string>("");
-  const [detailLoading, setDetailLoading] = useState(false);
+  // detail = output of the last finished request, tagged with the request it answered;
+  // it is "loading" while the current selection (or a reload) has no answer yet.
+  const [detailRes, setDetailRes] = useState<{ key: string; text: string } | null>(null);
+  const [reloadN, setReloadN] = useState(0);
+  const detailKey = sel ? `${sel}|${tab}|${source}|${reloadN}` : "";
+  const detailLoading = !!sel && detailRes?.key !== detailKey;
+  const detail = detailLoading ? "" : (detailRes?.text ?? "");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const fetchData = useCallback(async (): Promise<Data> => {
     try {
       const r = await fetch("/api/openshell", { cache: "no-store" });
-      setData(await r.json());
+      return await r.json();
     } catch (e) {
-      setData({ ok: false, error: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setLoading(false);
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   }, []);
 
-  const loadDetail = useCallback(async (name: string, t: Tab, src: string) => {
-    setDetailLoading(true);
-    setDetail("");
-    try {
-      const q = t === "policy" ? `policy=${encodeURIComponent(name)}`
-        : t === "decisions" ? `logs=${encodeURIComponent(name)}&source=sandbox&n=3000`
-        : `logs=${encodeURIComponent(name)}&source=${src}`;
-      const r = await fetch(`/api/openshell?${q}`, { cache: "no-store" });
-      const j = await r.json();
-      setDetail(j.text ?? j.error ?? "(no output)");
-    } catch (e) {
-      setDetail(e instanceof Error ? e.message : String(e));
-    } finally {
-      setDetailLoading(false);
-    }
-  }, []);
+  // manual refresh (spinner); the poller below updates silently
+  const load = async () => {
+    setLoading(true);
+    setData(await fetchData());
+    setLoading(false);
+  };
 
   useEffect(() => {
-    load();
-    const t = setInterval(load, 6000);
-    return () => clearInterval(t);
-  }, [load]);
+    let alive = true;
+    const tick = async () => { const d = await fetchData(); if (alive) setData(d); };
+    tick();
+    const t = setInterval(tick, 6000);
+    return () => { alive = false; clearInterval(t); };
+  }, [fetchData]);
 
-  // (re)load the detail whenever the selected sandbox / tab / source changes
+  // (re)load the detail whenever the selected sandbox / tab / source changes (or on reload)
   useEffect(() => {
-    if (sel) loadDetail(sel, tab, source);
-  }, [sel, tab, source, loadDetail]);
+    if (!sel) return;
+    let alive = true;
+    const key = `${sel}|${tab}|${source}|${reloadN}`;
+    (async () => {
+      let text: string;
+      try {
+        const q = tab === "policy" ? `policy=${encodeURIComponent(sel)}`
+          : tab === "decisions" ? `logs=${encodeURIComponent(sel)}&source=sandbox&n=3000`
+          : `logs=${encodeURIComponent(sel)}&source=${source}`;
+        const r = await fetch(`/api/openshell?${q}`, { cache: "no-store" });
+        const j = await r.json();
+        text = j.text ?? j.error ?? "(no output)";
+      } catch (e) {
+        text = e instanceof Error ? e.message : String(e);
+      }
+      if (alive) setDetailRes({ key, text });
+    })();
+    return () => { alive = false; };
+  }, [sel, tab, source, reloadN]);
 
   const gw = data?.gateway;
   const sandboxes = data?.sandboxes ?? [];
@@ -118,31 +132,34 @@ export function LiveOpenShell() {
         ) : (
           <span className="text-[12px] text-[var(--color-fg-mut)]">{data ? "unreachable" : "loading…"}</span>
         )}
-        <span className="ml-auto font-mono text-[10px] text-[var(--color-fg-mut)]">ns: openshell</span>
+        <span className="ml-auto font-mono text-[10px] text-[var(--color-fg-mut)]">ns: {data?.namespace ?? "…"}</span>
       </div>
 
-      {/* inference route + registered providers (from openshell inference get / provider list) */}
+      {/* inference providers (from openshell provider list / sandbox provider list) */}
       {data?.ok && data.inference && (
         <div className="mb-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-bg-2)] px-3 py-2.5">
           <div className="flex flex-wrap items-center gap-2">
             <Cpu size={15} className="text-[var(--color-fg-mut)]" />
-            <span className="text-[13px] font-semibold text-[var(--color-fg)]">Inference route</span>
+            <span className="text-[13px] font-semibold text-[var(--color-fg)]">Inference provider</span>
             {data.inference.configured ? (
               <span className="inline-flex items-center gap-1.5 text-[12px] text-[var(--color-nv-bright)]">
                 <span style={{ width: 7, height: 7, borderRadius: 7, background: "#76b900", display: "inline-block" }} />
-                {data.inference.provider} · <span className="font-mono">{data.inference.model}</span>{data.inference.version ? ` · v${data.inference.version}` : ""}
+                {data.inference.provider}{data.inference.profile ? <> · profile <span className="font-mono">{data.inference.profile}</span></> : null}
+                {data.inference.model ? <> · <span className="font-mono">{data.inference.model}</span></> : null}
               </span>
             ) : (
-              <span className="text-[12px] text-[var(--color-fg-mut)]">not configured — set it in <em>Set Your Inference Endpoint</em></span>
+              <span className="text-[12px] text-[var(--color-fg-mut)]">not configured — create it in <em>Set Your Inference Endpoint</em></span>
             )}
-            <span className="ml-auto font-mono text-[10px] text-[var(--color-fg-mut)]">via inference.local</span>
+            <span className="ml-auto font-mono text-[10px] text-[var(--color-fg-mut)]">
+              {data.inference.agent}: {data.inference.attached.length ? `attached ${data.inference.attached.join(", ")}` : "no provider attached"}
+            </span>
           </div>
           {data.inference.providers.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {data.inference.providers.map((p) => (
                 <span key={p.name} title={`credentials: ${p.credentialKeys.join(", ") || "—"}`}
                   className="inline-flex items-center gap-1 rounded border border-[var(--color-line-2)] px-2 py-0.5 font-mono text-[10px] text-[var(--color-fg-dim)]">
-                  {p.name === data.inference!.provider && <span style={{ width: 5, height: 5, borderRadius: 5, background: "#76b900", display: "inline-block" }} />}
+                  {data.inference!.attached.includes(p.name) && <span style={{ width: 5, height: 5, borderRadius: 5, background: "#76b900", display: "inline-block" }} />}
                   {p.name} <span className="text-[var(--color-fg-mut)]">({p.type})</span>
                   {p.credentialKeys.length > 0 && <span className="inline-flex items-center gap-0.5 text-[var(--color-fg-mut)]"><KeyRound size={9} />{p.credentialKeys.length}</span>}
                 </span>
@@ -150,7 +167,8 @@ export function LiveOpenShell() {
             </div>
           )}
           <p className="mt-1.5 text-[10px] text-[var(--color-fg-mut)]">
-            The provider holds the endpoint + key (<strong>values never shown</strong> — only key names); agents reach the model at <code>inference.local</code>.
+            The provider holds the key (<strong>values never shown</strong> — only key names). A sandbox it is attached to sees only a placeholder;
+            the supervisor swaps in the real key on egress{data.inference.endpointHost ? <>, and only to <code>{data.inference.endpointHost}</code></> : null}.
           </p>
         </div>
       )}
@@ -210,7 +228,7 @@ export function LiveOpenShell() {
                 ))}
               </div>
             )}
-            <button onClick={() => sel && loadDetail(sel, tab, source)} className="ml-auto inline-flex items-center gap-1 text-[11px] text-[var(--color-fg-mut)] hover:text-[var(--color-fg)]">
+            <button onClick={() => setReloadN((n) => n + 1)} className="ml-auto inline-flex items-center gap-1 text-[11px] text-[var(--color-fg-mut)] hover:text-[var(--color-fg)]">
               <RefreshCw size={11} className={detailLoading ? "animate-spin" : ""} /> reload
             </button>
           </div>

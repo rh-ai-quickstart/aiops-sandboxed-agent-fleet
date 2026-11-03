@@ -2,25 +2,26 @@ import { DIAGRAM as C } from "./palette";
 
 // The demo workload + its telemetry pipeline: a loadgen drives the instrumented shop-app, which
 // emits the three signals into the observability backends (traces→Tempo, metrics→Prometheus via a
-// ServiceMonitor, logs→Loki via Alloy); an event-exporter feeds k8s events into Loki too. The
+// ServiceMonitor, logs→Loki via the cluster log forwarder); an event-exporter feeds k8s events into Loki too. The
 // sealed fleet then reads those backends. Theme-aware (CSS vars + translucent accent fills).
+const W = 980, H = 470;
+const GREEN = "#8fce46", BLUE = "#7aa2e3", AMBER = "#e0a23a", CYAN = "#34d4e0", VIOLET = "#a78bfa";
+const Node = ({ x, y, w, h = 54, cls, stroke, title, sub, badge }: { x: number; y: number; w: number; h?: number; cls: string; stroke: string; title: string; sub?: string; badge?: string }) => (
+  <g>
+    <rect x={x} y={y} width={w} height={h} rx={11} className={cls} stroke={stroke} strokeWidth={1.6} />
+    <text x={x + w / 2} y={y + (sub ? h / 2 - 1 : h / 2 + 4)} fontSize={12.5} className="da-ink" textAnchor="middle" fontWeight={700}>{title}</text>
+    {sub && <text x={x + w / 2} y={y + h / 2 + 14} fontSize={9.4} className="da-sub" textAnchor="middle">{sub}</text>}
+    {badge && <text x={x + w / 2} y={y + h - 6} fontSize={9} fill={AMBER} textAnchor="middle" fontWeight={700}>{badge}</text>}
+  </g>
+);
+const Arrow = ({ x1, y1, x2, y2, label, color, lx, ly }: { x1: number; y1: number; x2: number; y2: number; label?: string; color: string; lx?: number; ly?: number }) => (
+  <g>
+    <path d={`M${x1},${y1} L${x2},${y2}`} stroke={color} strokeWidth={1.7} fill="none" markerEnd="url(#da_a)" />
+    {label && <text x={lx ?? (x1 + x2) / 2} y={ly ?? (y1 + y2) / 2 - 5} fontSize={9} fill={color} textAnchor="middle" fontWeight={600}>{label}</text>}
+  </g>
+);
+
 export function DemoArchitecture() {
-  const W = 980, H = 470;
-  const GREEN = "#8fce46", BLUE = "#7aa2e3", AMBER = "#e0a23a", CYAN = "#34d4e0", VIOLET = "#a78bfa";
-  const Node = ({ x, y, w, h = 54, cls, stroke, title, sub, badge }: { x: number; y: number; w: number; h?: number; cls: string; stroke: string; title: string; sub?: string; badge?: string }) => (
-    <g>
-      <rect x={x} y={y} width={w} height={h} rx={11} className={cls} stroke={stroke} strokeWidth={1.6} />
-      <text x={x + w / 2} y={y + (sub ? h / 2 - 1 : h / 2 + 4)} fontSize={12.5} className="da-ink" textAnchor="middle" fontWeight={700}>{title}</text>
-      {sub && <text x={x + w / 2} y={y + h / 2 + 14} fontSize={9.4} className="da-sub" textAnchor="middle">{sub}</text>}
-      {badge && <text x={x + w / 2} y={y + h - 6} fontSize={9} fill={AMBER} textAnchor="middle" fontWeight={700}>{badge}</text>}
-    </g>
-  );
-  const Arrow = ({ x1, y1, x2, y2, label, color, lx, ly }: { x1: number; y1: number; x2: number; y2: number; label?: string; color: string; lx?: number; ly?: number }) => (
-    <g>
-      <path d={`M${x1},${y1} L${x2},${y2}`} stroke={color} strokeWidth={1.7} fill="none" markerEnd="url(#da_a)" />
-      {label && <text x={lx ?? (x1 + x2) / 2} y={ly ?? (y1 + y2) / 2 - 5} fontSize={9} fill={color} textAnchor="middle" fontWeight={600}>{label}</text>}
-    </g>
-  );
   const bx = 540, bw = 176;                   // backend column
   const beds = [
     { y: 70, t: "Tempo 🧵", s: "traces" },
@@ -52,12 +53,12 @@ export function DemoArchitecture() {
         <Node x={28} y={92} w={164} cls="da-blue" stroke={BLUE} title="loadgen" sub="continuous traffic" />
         <Arrow x1={110} y1={146} x2={110} y2={214} label="GET /checkout" color={CYAN} lx={150} ly={184} />
         <Node x={28} y={214} w={164} h={84} cls="da-green" stroke={C.nvidia} title="shop-app" sub="instrumented service" badge="⚡ runtime fault toggle" />
-        <Node x={28} y={356} w={164} cls="da-amber" stroke={AMBER} title="event-exporter" sub="watches k8s events" />
+        <Node x={28} y={356} w={164} cls="da-amber" stroke={AMBER} title="event-exporter" sub="watches your demo ns" />
 
         {/* instrumentation arrows → backends */}
         <Arrow x1={192} y1={234} x2={bx} y2={92}  label="OTLP traces" color={C.sub} lx={372} ly={150} />
         <Arrow x1={192} y1={256} x2={bx} y2={218} label="/metrics · ServiceMonitor" color={C.sub} lx={372} ly={236} />
-        <Arrow x1={192} y1={278} x2={bx} y2={344} label="stdout · Alloy" color={C.sub} lx={360} ly={300} />
+        <Arrow x1={192} y1={278} x2={bx} y2={344} label="stdout · log forwarder" color={C.sub} lx={360} ly={300} />
         <Arrow x1={192} y1={382} x2={bx} y2={356} label="events" color={C.sub} lx={372} ly={392} />
 
         {/* backends */}

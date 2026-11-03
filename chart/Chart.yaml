@@ -2,16 +2,16 @@ apiVersion: v2
 name: nemoclaw
 description: NemoClaw workshop — OpenShell + OpenClaw + monitoring on OpenShift
 type: application
-version: 0.1.0
-appVersion: "1.0.0"
+version: 0.2.0
+appVersion: "2.0.0"
 
 dependencies:
   - name: openshell
-    version: "0.1.0"
+    version: "0.2.0"
     condition: openshell.enabled
   - name: monitoring
     version: "0.2.0"
     condition: monitoring.enabled
   - name: workshop
-    version: "0.1.0"
+    version: "0.2.0"
     condition: workshop.enabled

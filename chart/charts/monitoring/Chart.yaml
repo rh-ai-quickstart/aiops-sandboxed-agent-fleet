@@ -5,6 +5,12 @@ type: application
 version: 0.2.0
 
 dependencies:
+  # The Grafana chart moved from grafana.github.io/helm-charts (frozen at 10.x) to the
+  # grafana-community repository. 14.3.0 (Grafana 13.3.0) was rendered and checked against
+  # 8.15.0: same dashboard sidecar folder (/tmp/dashboards, now with a /tmp emptyDir because
+  # the containers run readOnlyRootFilesystem), same UID 472 / RuntimeDefault seccomp pod
+  # (admitted by the nonroot-v2 SCC granted in templates/scc-grants.yaml), and rbac.namespaced
+  # / sidecar searchNamespace still supported.
   - name: grafana
-    version: "8.*"
-    repository: "https://grafana.github.io/helm-charts"
+    version: "14.3.0"
+    repository: "https://grafana-community.github.io/helm-charts"

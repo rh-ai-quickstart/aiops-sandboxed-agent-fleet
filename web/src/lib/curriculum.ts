@@ -19,7 +19,7 @@ export const CURRICULUM: Part[] = [
     subtitle: "The platform we pre-built for you — how it was made, and how to read it",
     accent: "rh",
     lessons: [
-      { slug: "big-picture", title: "The Big Picture", blurb: "OpenShift cluster → OpenShell gateway → Envoy → your agent.", minutes: 8 },
+      { slug: "big-picture", title: "The Big Picture", blurb: "OpenShift cluster → OpenShell gateway → your sealed agent → a remote model.", minutes: 8 },
       { slug: "why-openshift", title: "Why OpenShift", blurb: "Red Hat's enterprise Kubernetes — and why it's the base.", minutes: 7 },
       { slug: "the-cluster", title: "Your Cluster, Already Up", blurb: "How the stack was deployed — and inspect it live with oc.", minutes: 8, hasLab: true },
       { slug: "openshell", title: "The OpenShell Gateway", blurb: "The agent control plane: agent-sandbox CRD + the Helm chart + the compute driver — and drive it with the CLI.", minutes: 9, hasLab: true },
@@ -32,7 +32,7 @@ export const CURRICULUM: Part[] = [
     accent: "nv",
     lessons: [
       { slug: "openshell-ops", title: "Control Plane & Policies", blurb: "The gateway, the sandbox CRD, and the deny-by-default policy model that governs every agent.", minutes: 10, hasLab: true },
-      { slug: "explore", title: "Explore It Hands-On", blurb: "Spin a throwaway sandbox and play with every part: status, logs/audit, policy get & prove, inference, forward.", minutes: 12, hasLab: true },
+      { slug: "explore", title: "Explore It Hands-On", blurb: "Spin a throwaway sandbox and play with every part: status, logs/audit, policy, providers, forward.", minutes: 12, hasLab: true },
     ],
   },
   {
@@ -41,10 +41,10 @@ export const CURRICULUM: Part[] = [
     subtitle: "Hands-on: create an OpenClaw agent on the gateway, step by step",
     accent: "nv",
     lessons: [
-      { slug: "inference", title: "Set Your Inference Endpoint", blurb: "Put your endpoint, model & key in .env, and verify them with a /v1/models call.", minutes: 6, hasLab: true },
+      { slug: "inference", title: "Set Your Inference Endpoint", blurb: "Verify your endpoint, model & key, then register them with the gateway as a provider — the agent never holds the key.", minutes: 6, hasLab: true },
       { slug: "create-agent", title: "Create Your Agent", blurb: "openshell sandbox create + an egress policy → your own sealed OpenClaw sandbox.", minutes: 10, hasLab: true },
-      { slug: "configure", title: "Give It a Brain", blurb: "Stage openclaw.json (model + gateway auth) and start the OpenClaw gateway inside the sandbox.", minutes: 9, hasLab: true },
-      { slug: "access", title: "Open the Agent UI", blurb: "Open the Control UI via the OpenShift Route.", minutes: 6, hasLab: true },
+      { slug: "configure", title: "Give It a Brain", blurb: "Stage openclaw.json (real endpoint + placeholder key + gateway auth) and start the OpenClaw gateway inside the sandbox.", minutes: 9, hasLab: true },
+      { slug: "access", title: "Open the Agent UI", blurb: "Open the Control UI — bridged out of the seal by openshell forward, exposed via an OpenShift Route.", minutes: 6, hasLab: true },
       { slug: "pairing", title: "Pair Your Browser", blurb: "First open asks for device pairing — approve it: openclaw devices list / approve.", minutes: 7, hasLab: true },
       { slug: "chat", title: "Talk to Your Agent", blurb: "Your first conversation — and watch the policy + sandbox in action.", minutes: 7, hasLab: true },
     ],

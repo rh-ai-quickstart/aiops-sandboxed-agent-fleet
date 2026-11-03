@@ -1,20 +1,30 @@
 Your sandbox is up, but it's empty — no model, no running agent. OpenClaw reads its config from `~/.openclaw/openclaw.json` (inside the sandbox, `HOME` is `/sandbox`). Let's give it a model and start the **OpenClaw gateway** (its Control UI + agent runtime).
 
-## 1. Build the config — pointed at the privacy router
+## 1. Build the config — pointed at your real endpoint, with a placeholder key
 
-This points OpenClaw at the gateway's privacy router, `https://inference.local` — **not** your real endpoint. Your key stays in the gateway (you registered it in the inference lesson); the agent only needs the **model id** and a placeholder key. We build the config on the host, then stage it **into the sandbox** — and because the agent is Landlock-confined, we write it through `openshell sandbox exec` (base64, since exec doesn't take multi-line args):
+OpenClaw talks to your **real** inference endpoint (`$NEMOCLAW_INFERENCE_BASE_URL`) — but with a **placeholder** API key. When you attached the provider (`--provider` in the last lesson), the sandbox got an `OPENAI_API_KEY` env var whose value is not your key but a reference the supervisor understands. Let's look at it from *inside* the sandbox:
+
+```bash
+PH=$(openshell sandbox exec -n shifty -- sh -c 'printf %s "$OPENAI_API_KEY"')
+echo "inside the sandbox, OPENAI_API_KEY=$PH"
+```
+
+You'll see something like `openshell:resolve:env:v<revision>_OPENAI_API_KEY` — a placeholder, useless outside this sandbox. Note the **revision**: the gateway re-issues the placeholder whenever the provider changes (a rotated key, for example), and an old one eventually stops resolving. So we don't copy it into OpenClaw's config: the config says `${OPENAI_API_KEY}`, and OpenClaw substitutes the sandbox's current placeholder each time it starts. We build the config on the host, then stage it **into the sandbox** — and because the agent is Landlock-confined, we write it through `openshell sandbox exec` (base64, since exec doesn't take multi-line args):
 
 ```bash
 cd ~/nemoclaw-openshift-launchable
 set -a; . .env; set +a
-PW="${OPENCLAW_GATEWAY_PASSWORD:-openshell-wad26}"
-OC=$(jq -n --arg model "$NEMOCLAW_MODEL" --arg pw "$PW" '{
-    gateway: { auth:{password:$pw}, remote:{ url:"ws://127.0.0.1:30789", password:$pw },
+PW="${OPENCLAW_GATEWAY_PASSWORD:-openclaw}"
+PH=$(openshell sandbox exec -n shifty -- sh -c 'printf %s "$OPENAI_API_KEY"')
+[ -n "$PH" ] || echo "WARNING: OPENAI_API_KEY is empty inside the sandbox — is the provider attached? (openshell sandbox provider list shifty)"
+OC=$(jq -n --arg model "$NEMOCLAW_MODEL" --arg pw "$PW" --arg base "$NEMOCLAW_INFERENCE_BASE_URL" \
+  --argjson cw "${NEMOCLAW_MODEL_CONTEXT_WINDOW:-65536}" '{
+    gateway: { port:30789, auth:{password:$pw}, remote:{ url:"ws://127.0.0.1:30789", password:$pw },
                controlUi:{ dangerouslyAllowHostHeaderOriginFallback:true } },
     agents:  { defaults:{ model:{ primary:("custom/"+$model) } } },
-    models:  { providers:{ custom:{ baseUrl:"https://inference.local/v1",
-               apiKey:"openshell-router", api:"openai-completions",
-               models:[{id:$model,name:$model}] } } }
+    models:  { providers:{ custom:{ baseUrl:$base,
+               apiKey:"${OPENAI_API_KEY}", api:"openai-completions",
+               models:[{id:$model,name:$model,contextWindow:$cw,maxTokens:4096}] } } }
   }')
 echo "$OC" | jq .   # <- see exactly what we're about to write
 openshell sandbox exec -n shifty -- sh -c "mkdir -p /sandbox/.openclaw && echo $(printf '%s' "$OC" | base64 -w0) | base64 -d > /sandbox/.openclaw/openclaw.json"
@@ -26,16 +36,16 @@ That `echo "$OC" | jq .` prints the exact `openclaw.json` you're staging — it 
 ```json
 {
   "gateway": {
-    "auth": { "password": "openshell-wad26" },
-    "remote": { "url": "ws://127.0.0.1:30789", "password": "openshell-wad26" },
+    "auth": { "password": "<your gateway password>" },
+    "remote": { "url": "ws://127.0.0.1:30789", "password": "<your gateway password>" },
     "controlUi": { "dangerouslyAllowHostHeaderOriginFallback": true }
   },
   "agents": { "defaults": { "model": { "primary": "custom/<your-model>" } } },
   "models": {
     "providers": {
       "custom": {
-        "baseUrl": "https://inference.local/v1",
-        "apiKey": "openshell-router",
+        "baseUrl": "https://<your-endpoint>/v1",
+        "apiKey": "${OPENAI_API_KEY}",
         "api": "openai-completions",
         "models": [ { "id": "<your-model>", "name": "<your-model>" } ]
       }
@@ -44,7 +54,13 @@ That `echo "$OC" | jq .` prints the exact `openclaw.json` you're staging — it 
 }
 ```
 
-`Config valid` means OpenClaw accepted it. Two things to notice: `models.providers.custom.baseUrl` is `inference.local` (not your real endpoint), and `apiKey` is the literal placeholder `openshell-router` — the gateway swaps in your real key when it routes the call upstream.
+`Config valid` means OpenClaw accepted it. Two things to notice: `models.providers.custom.baseUrl` is your **real** endpoint, and `apiKey` is `${OPENAI_API_KEY}` — at startup OpenClaw replaces it with the sandbox's **placeholder**, never your key. When OpenClaw (`node`) calls your endpoint, the request leaves through the sandbox's egress proxy; the supervisor sees the placeholder in the `Authorization` header and swaps in the real key — because the provider's profile says that credential may go to *that* host, from *that* binary. Anywhere else, the placeholder stays a placeholder.
+
+You can see the rule the provider added to the sandbox's **effective** policy (your file + provider-composed entries):
+
+```bash
+openshell policy get shifty --full | grep -B2 -A8 -i "$(echo "$NEMOCLAW_INFERENCE_BASE_URL" | sed -E 's#^[a-z]+://([^/:]+).*#\1#')"
+```
 
 <Callout type="note" title="Why stage through the gateway, not oc cp">
 The agent is sealed under <strong>Landlock</strong> — it can only read <code>/sandbox</code> and <code>/tmp</code>. A file you <code>oc cp</code> into <code>/workspace</code> is invisible to it. Writing through <code>openshell sandbox exec</code> lands in the agent's real view. Same isolation, everywhere.
@@ -52,20 +68,20 @@ The agent is sealed under <strong>Landlock</strong> — it can only read <code>/
 
 ## 2. Start (or restart) the OpenClaw gateway
 
-So far the sandbox has just been **idling** — `create` only ran `true`, and the supervisor keeps the pod alive. Now we launch **OpenClaw** inside it, with the config you just wrote — on port `30789` (LAN bind so we can expose it next), password auth.
+So far the sandbox has just been **idling** — its main process is `sleep infinity`. Now we launch **OpenClaw** inside it, with the config you just wrote — on port `30789` (LAN bind so we can expose it next), password auth.
 
 We start it under `setsid` so it runs in its **own session** and keeps running after this command returns (a plain background process would be killed when the `exec` session ends). We record its PID to `/sandbox/gateway.pid` and kill that exact PID first — so this same command is also how you **restart** OpenClaw to pick up later config changes (run it again any time):
 
 ```bash
 openshell sandbox exec -n shifty -- sh -c \
-  'cd /sandbox && [ -f gateway.pid ] && kill "$(cat gateway.pid)" 2>/dev/null; sleep 2; setsid nohup openclaw gateway run --port 30789 --bind lan --auth password --password '"${PW:-openshell-wad26}"' --allow-unconfigured >/sandbox/gateway.log 2>&1 < /dev/null & echo $! > gateway.pid; sleep 8; grep -E "listening on ws|Browser control" /sandbox/gateway.log'
+  'cd /sandbox && [ -f gateway.pid ] && kill "$(cat gateway.pid)" 2>/dev/null; sleep 2; setsid nohup openclaw gateway run --port 30789 --bind lan --auth password --password '"${PW:-${OPENCLAW_GATEWAY_PASSWORD:-openclaw}}"' --allow-unconfigured >/sandbox/gateway.log 2>&1 < /dev/null & echo $! > gateway.pid; for i in $(seq 1 15); do grep -qE "\[gateway\] ready|listening on ws" /sandbox/gateway.log && break; sleep 2; done; grep -E "\[gateway\] ready|listening on ws" /sandbox/gateway.log'
 ```
 
 <Callout type="note" title="Why a PID file, not `gateway restart` or `pkill`?">
 There <em>is</em> an <code>openclaw gateway restart</code>, but it manages an <strong>installed OS service</strong> (systemd/launchd) — this sandbox is a minimal container with no init system, so we run the gateway in the foreground ourselves. <code>gateway run --force</code> can't free the port either (it needs <code>fuser</code>/<code>lsof</code>, neither of which ships here). And pattern-killing is unreliable: the running gateway's process line is just <code>openclaw</code> (so <code>pkill -f "gateway run"</code> never matches it, while <code>pkill -f openclaw</code> would also kill the very shell running this command). So we record the PID on start and <code>kill</code> exactly that — robust, with only <code>kill</code> + <code>setsid</code>.
 </Callout>
 
-The line that matters is **`listening on ws://0.0.0.0:30789`** — that's your agent's Control UI + WebSocket gateway, running inside the sealed sandbox. You'll expose it with `openshell forward` in the next lesson.
+The line that matters is **`[gateway] ready`** — your agent's Control UI + WebSocket gateway is up on port `30789`, running inside the sealed sandbox. You'll expose it with `openshell forward` in the next lesson.
 
 <Callout type="note" title="What about port 30791?">
 You'll also see <code>Browser control listening on http://127.0.0.1:30791</code>. That's a <em>separate</em> helper OpenClaw always starts for browser automation (the Chrome-extension relay) — bound to <strong>127.0.0.1 only</strong>, inside the sandbox, so it's never exposed. Ignore it; your gateway is the <code>:30789</code> one. The <code>security warning</code>, <code>update available</code>, and <code>Chrome extension relay</code> lines are likewise harmless notices.
@@ -73,18 +89,18 @@ You'll also see <code>Browser control listening on http://127.0.0.1:30791</code>
 
 ## 3. Prove the brain works
 
-Have the agent run one turn. We pass `--local` so it runs the agent **embedded** (a one-shot, no Control-UI session needed) — it still sends its thinking to `inference.local`:
+Have the agent run one turn. The OpenClaw gateway you just started owns the agent's state, so the turn goes **through it** (the CLI finds it on `gateway.port`, 30789) — it sends its thinking to your endpoint, with the placeholder key:
 
 ```bash
-openshell sandbox exec -n shifty -- sh -c 'cd /sandbox && openclaw agent --local --agent main -m "Reply with exactly: PONG" --session-id smoke'
+openshell sandbox exec -n shifty -- sh -c 'cd /sandbox && openclaw agent --agent main -m "Reply with exactly: PONG" --session-id smoke'
 ```
 
 You should get back `PONG`. If it answers, the whole chain is live: the agent reached the model **without ever holding your key**.
 
-<Callout type="note" title="Why --local">
-Without <code>--local</code>, <code>openclaw agent</code> first tries to reach a running OpenClaw gateway on its <em>default</em> port (18789) — ours is on 30789, so it prints <code>Gateway agent failed; falling back to embedded</code> and then works anyway. <code>--local</code> just runs embedded directly, so you skip that noisy detour for a one-shot test.
+<Callout type="note" title="Why not --local">
+<code>openclaw agent --local</code> runs the agent embedded, but OpenClaw refuses it while a gateway owns the same state directory (<em>"A Gateway is running for this state directory … Run without --local"</em>). Without <code>--local</code> the CLI targets the gateway on <code>gateway.port</code> — that's why the config sets <code>port: 30789</code> (the default would be 18789). The fleet agents in Part VI run no gateway, so they do use <code>--local</code>.
 </Callout>
 
 <Callout type="rh" title="The privacy boundary, made real">
-That reply travelled: agent → <code>inference.local</code> → supervisor (intercepts before policy) → the OpenShell gateway's inference router → it injects your real key → your inference endpoint → back. The agent never saw the key, and your real endpoint never appeared in its egress policy. Next: open the UI in your browser.
+That reply travelled: agent (<code>node</code>, holding only the placeholder) → the sandbox's egress proxy → the supervisor checks the effective policy (your endpoint, allowed for <code>node</code> by the provider's profile) and swaps the placeholder for your real key → your inference endpoint → back. The agent never saw the key, and the key can only ever reach the host the profile names. Next: open the UI in your browser.
 </Callout>
