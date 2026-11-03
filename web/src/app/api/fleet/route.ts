@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 const HOME = process.env.HOME ?? "/home/ubuntu";
 const env = { ...process.env, PATH: `${process.env.PATH ?? ""}:${HOME}/.local/bin:/usr/local/bin:/usr/bin` };
 const FLEET = (process.env.FLEET || "logs,metrics,traces,events,analyst").split(",").map((s) => s.trim()).filter(Boolean);
-const ROLES: Record<string, string> = { logs: "Scout 🔎 — logs (Loki)", metrics: "Gauge 📈 — metrics (Prometheus)", traces: "Trace 🧵 — traces (Tempo)", events: "Probe 🛎️ — k8s events (via Loki)", analyst: "Sage 🧠 — lead analyst (no egress)" };
+const ROLES: Record<string, string> = { logs: "Scout 🔎 — logs (Loki)", metrics: "Gauge 📈 — metrics (Prometheus)", traces: "Trace 🧵 — traces (Tempo)", events: "Probe 🛎️ — k8s events (via Loki)", analyst: "Sage 🧠 — lead analyst (no telemetry access)" };
 
 function openshell(args: string[], timeoutMs = 12_000): Promise<{ code: number | null; out: string }> {
   return new Promise((resolve) => {

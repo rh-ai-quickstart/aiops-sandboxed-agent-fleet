@@ -7,7 +7,7 @@ With the fleet up, here's the whole thing on one page — every agent, whether i
 Each card is one agent, read live from the cluster:
 
 - **Status** — `Ready` means the gateway has the sandbox up and its policy loaded.
-- **May reach** — pulled straight from the agent's *effective* policy (`openshell policy get <agent>`). Every agent shares the in-cluster **registry** (so it can install its skill); beyond that:
+- **May reach** — pulled straight from the agent's own (base) policy (`openshell policy get <agent> --base`, without the inference endpoint its attached provider composes in). Every agent shares the in-cluster **registry** (so it can install its skill); beyond that:
   - `logs` reaches **Loki** and nothing else,
   - `metrics` reaches **Prometheus** and nothing else,
   - `traces` reaches **Tempo** and nothing else,

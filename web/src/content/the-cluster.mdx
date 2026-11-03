@@ -9,8 +9,8 @@ OpenShift cluster
 ├── <openshell namespace>            ← gateway + registry + this workshop + your agent sandboxes
 ├── <demo namespace>                 ← the demo app (Part VI incident lab)
 ├── openshift-monitoring namespace   ← Prometheus (Thanos Querier), Alertmanager
-├── openshift-logging namespace      ← Loki Operator (log aggregation)
-├── observability-hub namespace      ← Tempo Operator, OTEL Collector (tracing)
+├── openshift-logging namespace      ← LokiStack + ClusterLogForwarder (log aggregation)
+├── observability-hub namespace      ← TempoStack, OTEL Collector, RustFS object storage (tracing)
 └── monitoring namespace             ← Grafana (dashboards)
 ```
 

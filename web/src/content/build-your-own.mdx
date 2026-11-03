@@ -14,7 +14,7 @@ what's *already firing* — so the fleet starts from the alerts, not just raw si
    alerts   alertmanager-main.openshift-monitoring.svc.cluster.local:9092   -
    ```
 
-   (`9092` is Alertmanager's *tenancy* port: it only returns alerts for the `?namespace=` you ask for, and checks the agent's token may read it — so in a shared lab the agent sees only your alerts.)
+   (`9092` is Alertmanager's *tenancy* port: it only returns alerts for the `?namespace=` you ask for, and checks the agent's token may read it — so in a shared lab the agent sees only your alerts. It checks read access to `prometheusrules` in that namespace (the `monitoring-rules-view` role), which the fleet's `telemetry-reader` token doesn't have yet: an admin grants it with `oc -n "$DEMO_NS" create rolebinding alerts-reader --clusterrole=monitoring-rules-view --serviceaccount="$OPENSHELL_NS":telemetry-reader`.)
 2. **Soul** — `manifests/openclaw/fleet-roles/alerts/{IDENTITY.md,SOUL.md}`: "you read firing
    alerts only; surface alertname, severity, and the object."
 3. **Probe** — add to `buildProbes()` in the orchestrator:
@@ -53,8 +53,9 @@ real delivery. The human gate doesn't move; only the mechanism does.
 
 ## Point it at *your* workload
 
-The orchestrator is parameterized: `DEMO_NAMESPACE`, `PROM_HOST`, `LOKI_HOST`, `TEMPO_HOST` are all
-env-overridable (on the workshop Deployment). Deploy your own app, point `DEMO_NAMESPACE` at it, and the same fleet investigates *your*
+The orchestrator is parameterized: `DEMO_NAMESPACE`, `PROM_TENANCY_HOST`, `LOKI_HOST`, `TEMPO_HOST` are env vars on the
+workshop Deployment, set by the chart. Deploy your own app and set the chart's `global.demoNamespace` to its namespace (a Helm
+upgrade, which also re-scopes the workshop RBAC, the `telemetry-reader` RoleBinding and the event-exporter), and the same fleet investigates *your*
 namespace — every probe is already namespace-scoped. Nothing about the pattern is specific to the `shop` demo.
 
 <Callout type="rh" title="The test of a good pattern">

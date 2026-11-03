@@ -20,10 +20,10 @@ const COMPONENTS: Comp[] = [
     what: <>The brain. A gRPC API that allocates sandboxes, mints each one a scoped identity, hosts the policy engine + the credential store (providers), and exposes the operator-facing <code>openshell</code> CLI.</>,
     k8s: <>A <strong>StatefulSet</strong> <code>openshell</code> (SQLite) + Service. Its <em>Kubernetes compute driver</em> watches the <code>agents.x-k8s.io</code> Sandbox CRD. Healthy = log line <code>Listing sandboxes from Kubernetes</code>. Reached in-cluster via the Service (no public Route in this workshop).</> },
   { id: "sup", label: "Sandbox Supervisor", sub: "one per sandbox", color: PURPLE, lane: "agent",
-    what: <>Delivered by the gateway to <em>every</em> sandbox. It sets up the agent&apos;s isolated network namespace, exchanges a bootstrap token for a sandbox JWT, relays exec/SSH, enforces the sandbox-side policy, and swaps credential placeholders for real secrets on egress.</>,
+    what: <>Delivered by the gateway to <em>every</em> sandbox. It exchanges a bootstrap token for a sandbox JWT, relays exec, logs and file sync, checks every connection the agent opens against the policy, and swaps credential placeholders for real secrets on egress.</>,
     k8s: <>An <code>os-supervisor-…</code> pod per sandbox, next to the sandbox pod <code>default--&lt;name&gt;</code> (whose <code>agent</code> container runs the workload). It dials back to the gateway over the in-cluster Service. No privileged SCC needed — sandboxes run under <code>restricted-v2</code>.</> },
   { id: "harness", label: "Agent Harness", sub: "Definition · Memory · Skills", color: BLUE, lane: "agent",
-    what: <>The agent itself: its <strong>Definition</strong> (who it is), <strong>Memory</strong> (the workspace), and <strong>Skills</strong> (what it can do). Gateway-created agents are wrapped by the supervisor; Shifty uses the same OpenClaw workspace model in a prebuilt Sandbox.</>,
+    what: <>The agent itself: its <strong>Definition</strong> (who it is), <strong>Memory</strong> (the workspace), and <strong>Skills</strong> (what it can do). Gateway-created agents are wrapped by the supervisor — Shifty included: it is created with <code>openshell sandbox create</code> and uses the OpenClaw workspace model.</>,
     k8s: <>The <code>agent</code> container in the sandbox Pod, running the OpenClaw image. Its workspace (<code>IDENTITY.md</code>/<code>SOUL.md</code>/…) lives on a mounted PVC.</> },
   { id: "subs", label: "Sub-Agents", sub: "spawned on demand", color: GREEN, lane: "agent",
     what: <>Agents can spawn focused sub-agents (a recon agent, an incident responder) — each its own sandbox with its own identity and policy.</>,
@@ -43,7 +43,7 @@ const COMPONENTS: Comp[] = [
     k8s: <><code>openshell provider profile import</code> + <code>openshell provider create</code>, then <code>sandbox create --provider</code> (or <code>sandbox provider attach</code>). The profile composes the endpoint into the sandbox&apos;s effective policy; the key never lands in the pod spec.</> },
   { id: "model", label: "Model", sub: "local or cloud frontier", color: SLATE, lane: "guard",
     what: <>Where inference actually runs: a local frontier model (e.g. Nemotron) for privacy, or a cloud frontier model. The agent calls its native API; the credential is brokered by OpenShell.</>,
-    k8s: <>For this workshop, inference is a <strong>remote OpenAI-compatible endpoint</strong> (no local GPU). Shifty calls it directly with the placeholder key from its attached provider; the supervisor injects the real key.</> },
+    k8s: <>For this workshop, inference is an <strong>OpenAI-compatible endpoint</strong> — in this lab, Nemotron on the cluster&apos;s own GPU via OpenShift AI Models-as-a-Service (a remote API works too). Shifty calls it directly with the placeholder key from its attached provider; the supervisor injects the real key.</> },
 ];
 
 export function OpenShellRuntime() {

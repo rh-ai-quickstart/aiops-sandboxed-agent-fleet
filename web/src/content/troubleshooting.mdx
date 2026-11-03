@@ -1,10 +1,10 @@
 The gotchas we hit so you don't have to. Most are handled by the Helm chart — here's what to check if something's off (run the checks in the shell).
 
 ## Can't reach the agent UI on :30789
-The agent UI is bridged out of the sealed sandbox by `openshell forward`. Check the forward and that the OpenClaw gateway is up inside the sandbox:
+The agent UI is bridged out of the sealed sandbox by `openshell forward`, run by the workshop pod's `openclaw-forward` sidecar (your shell shares its network). Check the bridge and that the OpenClaw gateway is up inside the sandbox:
 
 ```bash
-openshell forward list
+curl -s -o /dev/null -w "OpenClaw UI: HTTP %{http_code}\n" http://127.0.0.1:30789/
 openshell sandbox exec -n shifty -- sh -c 'tail -3 /sandbox/gateway.log'   # gateway listening?
 ```
 
@@ -63,11 +63,11 @@ oc -n openshift-console get pods
 ```
 
 ## OpenClaw asks for device pairing
-That's expected — approve it (see **Part IV · Device Pairing**):
+That's expected — approve it (see [Pair Your Browser](/learn/pairing) in Part IV):
 
 ```bash
 sbox-openclaw devices list
-sbox-openclaw devices approve --latest
+sbox-openclaw devices approve <REQUEST_ID>   # the Request id from the list above
 ```
 
 ## Image pulls stall ("unexpected EOF")

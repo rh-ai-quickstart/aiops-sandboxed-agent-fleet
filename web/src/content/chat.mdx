@@ -19,7 +19,7 @@ openshell sandbox exec -n shifty -- sh -c 'tail -n 20 /sandbox/gateway.log'
 And confirm what the agent is allowed to reach — the deny-by-default policy in force:
 
 ```bash
-openshell policy get shifty
+openshell policy get shifty --full
 ```
 
 Everything it can touch on the network is right there. Ask it to fetch a random website and it simply can't — the egress isn't in the policy. That's the guarantee: the agent does what you want, and *only* what you allowed.
@@ -47,7 +47,7 @@ If `cat` says *No such file*, the model answered in chat without calling its wri
 The agent acted inside its sandbox; you observed it from the control plane. That separation — agent in a sealed box, you holding the keys — is the whole point.
 
 <Callout type="tip" title="If a reply stalls">
-Check the model config and that egress is allowed: <code>openshell sandbox exec -n shifty -- openclaw config get</code> and <code>openshell logs shifty --tail</code>. A blocked request shows as a denied egress in the audit log — that's the policy doing its job, not a bug.
+Check the model config and that egress is allowed: <code>openshell sandbox exec -n shifty -- openclaw config get models.providers.custom</code> and <code>openshell logs shifty --tail</code>. A blocked request shows as a denied egress in the audit log — that's the policy doing its job, not a bug.
 </Callout>
 
 <Callout type="rh" title="You have a working agent">

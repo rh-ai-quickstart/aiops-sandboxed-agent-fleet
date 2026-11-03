@@ -223,7 +223,7 @@ up() {
     if [[ "${SK[i]}" != "-" && -n "${SK[i]}" ]]; then
       local auth; auth="$(printf 'workshop:%s' "${OPENCLAW_REGISTRY_PASSWORD:-wad26-skills}" | b64)"
       ox "$name" "printf 'registry=http://${REG}/\n@workshop:registry=http://${REG}/\n//${REG}/:_auth=${auth}\n' > /sandbox/.npmrc"
-      ox "$name" "NODE_NO_WARNINGS=1 openclaw plugins install '${SK[i]}' 2>&1 | tail -1 | sed 's/^/     /'" || true
+      ox "$name" "NODE_NO_WARNINGS=1 openclaw plugins install '${SK[i]}' --accept-capabilities --force 2>&1 | tail -1 | sed 's/^/     /'" || true
     fi
     echo "   ✓ ${name} ready + configured"
   done

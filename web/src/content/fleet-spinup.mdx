@@ -47,7 +47,7 @@ See the sandbox **pods** on the cluster (each agent is a sealed pod named `defau
 oc get pods -n "$OPENSHELL_NS"
 ```
 
-The same fleet as **Sandbox custom resources** — what the OpenShell gateway reconciles into those pods:
+The same fleet as **Sandbox custom resources**: the gateway writes one per agent, and the agent-sandbox controller reconciles each into its pod:
 
 ```bash
 oc get sandboxes -n "$OPENSHELL_NS"
@@ -140,7 +140,7 @@ that has a backend, at `/sandbox/.agents/skills/cluster-telemetry/`:
   renders Kubernetes events readably (`[Warning] Failed: Failed to pull image … (Pod/shop-…)`).
 
 So every agent reaches its backend the **same governed way** — `curl` under its egress policy —
-and you can read the whole skill (it's ~40 lines) in `manifests/openclaw/skills/cluster-telemetry/`.
+and you can read the whole skill (`SKILL.md` plus a ~140-line `tq.js`) in `manifests/openclaw/skills/cluster-telemetry/`.
 
 <Callout type="note" title="Two kinds of 'skill' — don't confuse them">
 The <strong>cluster-telemetry</strong> skill above is staged into every agent automatically (it's
@@ -151,7 +151,7 @@ by default — the agents work fine with just cluster-telemetry + their SOUL.
 </Callout>
 
 <Callout type="note" title="Why this stays safe to scale">
-Adding a fifth agent is one more line in <code>fleet.txt</code> + one persona folder. It never widens the trust boundary: the new agent reaches exactly one more host, that grant is in its policy, and every call it makes is in the audit log.
+Adding a sixth agent is one more line in <code>fleet.txt</code> + one persona folder. It never widens the trust boundary: the new agent reaches exactly one more host, that grant is in its policy, and every call it makes is in the audit log.
 </Callout>
 
 Bring the fleet up, confirm `status` shows them Ready, then head to the next chapter to drive them.

@@ -1,11 +1,11 @@
-Your agent needs a **brain** — somewhere to send its thinking. There's no GPU on this box, so we use a **remote, OpenAI-compatible inference endpoint**. You provide three things:
+Your agent needs a **brain** — somewhere to send its thinking. It talks to an **OpenAI-compatible inference endpoint** — in this lab, NVIDIA Nemotron 3 Nano served on the cluster's own GPU through OpenShift AI Models-as-a-Service (any remote OpenAI-compatible API works the same way). You provide three things:
 
 - **Base URL** — the endpoint, ending in `/v1` (e.g. `https://api.openai.com/v1`)
 - **Model** — the model id to use (e.g. `gpt-4o`)
 - **API key** — your provider key (e.g. an `sk-…` key from your provider's dashboard)
 
 <Callout type="note" title="Providers — why your key never enters the agent">
-We don't paste the key into the agent. Instead we register the endpoint + key with the <strong>gateway</strong> as a <em>provider</em>, described by a <em>provider profile</em> (which host, which port, which binaries, how the credential is sent). When a sandbox is created with that provider attached, the agent only gets a <strong>placeholder</strong> in <code>$OPENAI_API_KEY</code> (it looks like <code>openshell:resolve:env:OPENAI_API_KEY</code>). The sandbox <strong>supervisor</strong> swaps the placeholder for the real key on egress — only toward the endpoint the profile allows, and only from the binaries it lists. So the agent <strong>never holds your key</strong>, and a leaked placeholder is worthless anywhere else.
+We don't paste the key into the agent. Instead we register the endpoint + key with the <strong>gateway</strong> as a <em>provider</em>, described by a <em>provider profile</em> (which host, which port, which binaries, how the credential is sent). When a sandbox is created with that provider attached, the agent only gets a <strong>placeholder</strong> in <code>$OPENAI_API_KEY</code> (it looks like <code>openshell:resolve:env:v&lt;revision&gt;_OPENAI_API_KEY</code>). The sandbox <strong>supervisor</strong> swaps the placeholder for the real key on egress — only toward the endpoint the profile allows, and only from the binaries it lists. So the agent <strong>never holds your key</strong>, and a leaked placeholder is worthless anywhere else.
 </Callout>
 
 <Callout type="rh" title="Shared lab? This is already done for you">
@@ -121,7 +121,7 @@ openshell provider get "$NEMOCLAW_INFERENCE_PROVIDER"
 
 ## Change it later
 
-To **rotate the key** (reference — run it when you actually have a new key). Attached sandboxes pick up the new credential; the placeholder they see doesn't change:
+To **rotate the key** (reference — run it when you actually have a new key). Attached sandboxes get a re-issued placeholder (a new revision) and the old one eventually stops resolving, so restart a running OpenClaw gateway afterwards (step 2 of *Give It a Brain*):
 
 ```bash-ref
 OPENAI_API_KEY=<new-key> openshell provider update "$NEMOCLAW_INFERENCE_PROVIDER" --credential OPENAI_API_KEY

@@ -33,6 +33,7 @@ network_policies:
     endpoints:
       - { host: duckduckgo.com, port: 443, access: full }
       - { host: html.duckduckgo.com, port: 443, access: full }
+      - { host: lite.duckduckgo.com, port: 443, access: full }
     binaries: [ { path: /usr/bin/node }, { path: /usr/local/bin/node } ]
 ```
 
@@ -49,7 +50,7 @@ This policy needs no editing — use it as-is.
 One command creates the agent. Let's read each flag, then run it:
 
 - `--name shifty` — what we'll call it.
-- `--from "$OPENCLAW_SANDBOX_IMAGE"` — the image: the OpenClaw community sandbox base (`ghcr.io/ansjindal/openclaw-sandbox:2026.8.2`, OpenClaw **2026.8.2**). It ships the `openclaw` agent (with the bundled DuckDuckGo plugin), `node` and `curl`.
+- `--from "$OPENCLAW_SANDBOX_IMAGE"` — the image: the OpenClaw community sandbox base (`ghcr.io/ansjindal/openclaw-sandbox:2026.8.2`, OpenClaw **2026.8.2**). It ships the `openclaw` agent, `node` and `curl` (DuckDuckGo search is a separate plugin you add in *Give It Web Search*).
 - `--policy …/openclaw-sandbox.yaml` — the egress grant from Step 2. **Always pass a policy**: a sandbox created without one never becomes Ready (its supervisor keeps asking the gateway for a policy that isn't there).
 - `--provider "$NEMOCLAW_INFERENCE_PROVIDER"` — attach the inference provider from the previous lesson. Inside the sandbox, `$OPENAI_API_KEY` will be a **placeholder**, never your key.
 - `--no-tty` — run non-interactively and don't attach a terminal.

@@ -18,7 +18,7 @@
 
 ---
 
-A real dependency of a shop application goes down on Red Hat OpenShift. Four specialist AI agents, each **sealed in its own OpenShell sandbox** and allowed to reach **exactly one** observability backend, investigate in parallel. An analyst agent with no tools and no network combines their findings into a root cause and a fix, and a human approves it.
+A real dependency of a shop application goes down on Red Hat OpenShift. Four specialist AI agents, each **sealed in its own OpenShell sandbox** and allowed to reach **exactly one** observability backend, investigate in parallel. An analyst agent with no access to the telemetry combines their findings into a root cause and a fix, and a human approves it.
 
 The repository ships the whole stack and an **interactive workshop** (30 lessons, live in-browser terminal) that teaches you to build it, from a single sandbox to the full SRE fleet.
 
@@ -80,7 +80,7 @@ flowchart LR
         trace["🧵 Trace · traces<br/>Tempo"]
         probe["📋 Probe · events<br/>Loki event stream"]
     end
-    sage["🧠 Sage · analyst<br/>no tools, no egress"]
+    sage["🧠 Sage · analyst<br/>no telemetry access"]
     human["🧑‍💻 Human review<br/>approves the fix"]
     ok["✅ error rate back to 0%"]
     outage --> scout & gauge & trace & probe
@@ -183,7 +183,7 @@ sequenceDiagram
 ```
 
 - Each specialist reaches **one** telemetry backend with a 24h token scoped to its own namespaces. It cannot reach the cluster API, the other backends or the internet.
-- The analyst has **no tools and no egress**.
+- The analyst has **no telemetry access**: it only reasons over the findings it is given.
 - In lab mode, attendees act only through their workshop terminal: no cluster-wide exec, no access to other attendees' namespaces, default-deny ingress, quotas, and a per-attendee access token on the website.
 
 ![Security layers](docs/security-layers.png)
@@ -252,7 +252,7 @@ Tested on OpenShift 4.22.18 (AWS), with Nemotron 3 Nano served by 1× NVIDIA L40
 
 | Test | Result |
 |---|---|
-| Full lesson flow, Playwright, fresh attendee | ✅ 112 / 113. The last failure is fixed, and the lesson re-run passes 3/3. |
+| Full lesson flow + isolation, Playwright, fresh attendee | ✅ 119 / 119 passed, 0 skipped |
 | Read-only lessons + isolation between attendees | ✅ 97 passed, 0 failed |
 | Incident Lab, several rounds | ✅ right root cause and fix every time, ~30–40 s, other attendees unaffected |
 | Investigation of a healthy app | ✅ reported healthy, no invented fault (15–17 s) |

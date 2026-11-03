@@ -21,8 +21,8 @@ const BOXES: Record<string, Box> = {
            detail: <>Gateway-created sandboxes (<code>openshell sandbox create</code>), in the gateway&apos;s own namespace. Each is a Pod <code>default--&lt;name&gt;</code> with an <code>agent</code> container on a PVC, plus a supervisor pod the gateway runs for it — under the <code>restricted-v2</code> SCC (no privileged grant) and, in a shared lab, NetworkPolicies that keep other attendees out.</> },
   console:{ id: "console", label: "OpenShift Console", sub: "Route · /console", color: AMBER,
            detail: <>The web console for the cluster (read the whole stack as native objects), reached via its OpenShift <code>Route</code>. Optional — hidden in a shared lab without per-attendee console logins.</> },
-  inf:   { id: "inf", label: "Remote inference", sub: "OpenAI-compatible", color: CYAN,
-           detail: <>No local GPU. The key is stored in the gateway as a <em>provider</em>; sandboxes it&apos;s attached to call the real endpoint with a placeholder key, and the supervisor injects the real one on egress — only toward that endpoint, only from <code>node</code>/<code>curl</code>.</> },
+  inf:   { id: "inf", label: "Model endpoint", sub: "OpenAI-compatible · cluster GPU or remote", color: CYAN,
+           detail: <>An OpenAI-compatible endpoint — in this lab, Nemotron on the cluster&apos;s own GPU via OpenShift AI Models-as-a-Service. The key is stored in the gateway as a <em>provider</em>; sandboxes it&apos;s attached to call the real endpoint with a placeholder key, and the supervisor injects the real one on egress — only toward that endpoint, only from <code>node</code>/<code>curl</code>.</> },
 };
 
 function B({ id, sel, onSelect }: { id: string; sel: string; onSelect: (id: string) => void }) {

@@ -8,7 +8,7 @@ Two paths run through OpenShell: the **agent path** (how an agent comes alive an
 
 ### The agent path
 - **Gateway** — the control plane (gRPC :8080). It allocates sandboxes, mints each a scoped identity, and hosts the policy engine + the credential store (providers). On K8s it's a StatefulSet whose *compute driver* watches the Sandbox CRD.
-- **Sandbox Supervisor** — delivered by the gateway to **every** sandbox (on Kubernetes you'll see an `os-supervisor-…` pod per sandbox). It builds the agent's isolated network namespace, exchanges a bootstrap token for a sandbox JWT, relays exec/SSH, enforces sandbox-side policy, and swaps credential placeholders for real secrets on egress.
+- **Sandbox Supervisor** — delivered by the gateway to **every** sandbox (on Kubernetes you'll see an `os-supervisor-…` pod per sandbox). It exchanges a bootstrap token for a sandbox JWT, loads the policy and provider state, relays exec, logs and file sync, checks every connection the agent opens against the policy (destination, binary, then the HTTP request), and swaps credential placeholders for real secrets on egress.
 - **Agent Harness** — the agent itself (Definition · Memory · Skills), wrapped by the supervisor in every gateway-created sandbox. Your `shifty` agent is exactly this: the OpenClaw image + a `.md` workspace, running as an `agents.x-k8s.io` `Sandbox` the gateway manages.
 - **Sub-Agents** — focused agents the harness can spawn, each its own sandbox with its own identity and policy.
 - **Accelerated Tooling** — what the agent reaches *through the guardrail*: filesystem, search, Omniverse/CAD, models — via API, CLI, or MCP.
@@ -17,7 +17,7 @@ Two paths run through OpenShell: the **agent path** (how an agent comes alive an
 - **Policy Engine + Validator** — deny-by-default. Per binary, which hosts/methods/paths are allowed; a draft validator can propose additions for a human to approve.
 - **Network Guardrail** — kernel-level, per-binary egress (`git → github.com ✓`, `curl → anywhere ✗`). Stops exfil through unknown channels; instant, no restart on change.
 - **Credential brokering (providers)** — secrets live in the gateway as *providers*, typed by *provider profiles* (allowed host, port, binaries). An attached sandbox sees only a **placeholder** (`openshell:resolve:env:…`); the supervisor injects the real key on egress, only to the profile's endpoint. **This workshop uses exactly this:** you register your endpoint + key as a gateway *provider* (Part IV) and attach it to your agent, so the agent calls your real endpoint yet never holds your key.
-- **Model** — where inference runs. Here, a remote OpenAI-compatible endpoint (no local GPU); in a GPU cluster, an in-cluster vLLM.
+- **Model** — where inference runs: an OpenAI-compatible endpoint. In this lab, NVIDIA Nemotron served by vLLM on the cluster's own GPU and published through OpenShift AI Models-as-a-Service (any remote OpenAI-compatible API works too).
 
 <Callout type="note" title="Why a runtime (not just a prompt)">
 Safety as a system prompt is a suggestion; safety at the <em>network and process layer</em> is enforced. Even if the agent is prompt-injected, the guardrail only lets its binaries reach the hosts and paths you allowed.
@@ -44,7 +44,7 @@ Every sandbox is bounded at five independent layers — some locked at creation,
 That's the defense-in-depth for OpenShell-governed sandboxes: even a fully prompt-injected agent is boxed in by the kernel and the proxy, not by a prompt. On top, OpenShift contributes its own half of the story — SCCs, pod security settings, and NetworkPolicy — the cluster-native guardrails every sandbox inherits.
 
 <Callout type="note" title="Where this deployment simplifies">
-CPU-only, remote inference instead of a local model, and an unauthenticated plaintext gateway reachable <strong>only inside the cluster</strong> (no public Route) instead of mTLS/OIDC. The <em>shape</em> is identical to a full production deployment — fewer optional add-ons.
+CPU-only sandboxes, inference through an OpenAI-compatible endpoint (in this lab, served on the cluster's own GPU by OpenShift AI Models-as-a-Service), and an unauthenticated plaintext gateway reachable <strong>only inside the cluster</strong> (no public Route) instead of mTLS/OIDC. The <em>shape</em> is identical to a full production deployment — fewer optional add-ons.
 </Callout>
 
 ## The foundation: agent-sandbox (the SIG project)

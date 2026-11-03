@@ -36,7 +36,7 @@ That `echo "$OC" | jq .` prints the exact `openclaw.json` you're staging — it 
 ```json
 {
   "gateway": {
-    "auth": { "password": "<your gateway password>" },
+    "port": 30789, "auth": { "password": "<your gateway password>" },
     "remote": { "url": "ws://127.0.0.1:30789", "password": "<your gateway password>" },
     "controlUi": { "dangerouslyAllowHostHeaderOriginFallback": true }
   },
@@ -47,7 +47,7 @@ That `echo "$OC" | jq .` prints the exact `openclaw.json` you're staging — it 
         "baseUrl": "https://<your-endpoint>/v1",
         "apiKey": "${OPENAI_API_KEY}",
         "api": "openai-completions",
-        "models": [ { "id": "<your-model>", "name": "<your-model>" } ]
+        "models": [ { "id": "<your-model>", "name": "<your-model>", "contextWindow": 65536, "maxTokens": 4096 } ]
       }
     }
   }
@@ -63,7 +63,7 @@ openshell policy get shifty --full | grep -B2 -A8 -i "$(echo "$NEMOCLAW_INFERENC
 ```
 
 <Callout type="note" title="Why stage through the gateway, not oc cp">
-The agent is sealed under <strong>Landlock</strong> — it can only read <code>/sandbox</code> and <code>/tmp</code>. A file you <code>oc cp</code> into <code>/workspace</code> is invisible to it. Writing through <code>openshell sandbox exec</code> lands in the agent's real view. Same isolation, everywhere.
+The agent is sealed under <strong>Landlock</strong> — it can only write to <code>/sandbox</code>, <code>/tmp</code> and <code>/var/tmp</code> (system paths like <code>/usr</code> are read-only, everything else is invisible). A file copied into <code>/workspace</code> would be invisible to it — and in a shared lab, <code>oc cp</code> / <code>oc exec</code> into pods is Forbidden anyway. Writing through <code>openshell sandbox exec</code> lands in the agent's real view. Same isolation, everywhere.
 </Callout>
 
 ## 2. Start (or restart) the OpenClaw gateway

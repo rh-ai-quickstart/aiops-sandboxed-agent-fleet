@@ -27,7 +27,7 @@ oc -n monitoring get pods
 <ServiceLink service="grafana">Open Grafana</ServiceLink> (single-user cluster: log in as `admin` / `openclaw`; shared lab: no login, read-only). You'll land on the pre-loaded **OpenShell Agent Fleet** dashboard (CPU / memory / restarts per sandbox); the built-in Kubernetes dashboards are there too. (It's served right here at **`/grafana`** on the workshop site — a same-origin proxy to Grafana's in-cluster Service.)
 
 <Callout type="note" title="Pre-deployed (and how to skip it)">
-The operator-managed components (Prometheus, Loki, Tempo, OTEL Collector) provision with the platform. The standalone Grafana is deployed by the Helm chart and can be opted out by setting <code>DEPLOY_MONITORING=false</code>.
+The operator-managed components (Prometheus, Loki, Tempo, OTEL Collector) provision with the platform. The standalone Grafana is installed by the deploy scripts as its own Helm release (<code>nemoclaw-monitoring</code>) in the shared <code>monitoring</code> namespace.
 </Callout>
 
 ## Watch the fleet

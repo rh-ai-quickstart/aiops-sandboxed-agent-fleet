@@ -6,7 +6,7 @@ This lesson builds to the production pattern: skills enter through **one registr
 
 ## 1. Discover skills on ClawHub
 
-Your agent ships **locked to your private registry** — by default it can't reach ClawHub at all (you'll confirm that in step 7). But to understand *why* that's the right posture, it helps to first meet the alternative — **ClawHub**, OpenClaw's public plugin registry — and see how you'd govern pulling skills straight from it. So open a **temporary door** for the next few steps:
+Your agent ships **without ClawHub** — its policy allows your private registry, public npm (for plugin dependencies) and DuckDuckGo, but not ClawHub (you'll lock it down further and confirm the denial in step 7). But to understand *why* that's the right posture, it helps to first meet the alternative — **ClawHub**, OpenClaw's public plugin registry — and see how you'd govern pulling skills straight from it. So open a **temporary door** for the next few steps:
 
 ```bash
 openshell policy update shifty --add-endpoint 'clawhub.ai:443:full' --add-endpoint 'hub.openclaw.ai:443:full' --binary /usr/bin/node --binary /usr/local/bin/node
@@ -44,7 +44,7 @@ network_policies:
 You can see the live result any time with `openshell policy get shifty`.
 
 <Callout type="note" title="Why registry.npmjs.org needs allow_encoded_slash">
-A plugin can pull <strong>scoped</strong> npm deps (e.g. <code>openclaw-hello-world</code> → <code>@sinclair/typebox</code>), which npm fetches as <code>/@sinclair%2ftypebox</code> — the <code>/</code> URL-encoded to <code>%2F</code>. The supervisor's egress proxy does strict path parsing and <strong>rejects encoded slashes by default</strong> (a path-traversal / request-smuggling guard), so the host is allowed but the request is denied by <code>engine:http-parser</code> and the install hangs at <em>"Installing plugin dependencies"</em>. Setting <code>protocol: rest</code> + <code>allow_encoded_slash: true</code> on the npm endpoint permits it. You'll see this exact denial — and then the fix — on the <a href="/learn/live">Live OpenShell</a> <strong>Policy decisions</strong> tab. (It's <strong>not</strong> settable via <code>openshell policy update --add-endpoint</code>; it lives in the policy YAML.)
+A plugin can pull <strong>scoped</strong> npm deps (e.g. <code>openclaw-hello-world</code> → <code>@sinclair/typebox</code>), which npm fetches as <code>/@sinclair%2ftypebox</code> — the <code>/</code> URL-encoded to <code>%2F</code>. The supervisor's egress proxy does strict path parsing and <strong>rejects encoded slashes by default</strong> (a path-traversal / request-smuggling guard), so the host is allowed but the request is denied by <code>engine:http-parser</code> and the install hangs at <em>"Installing plugin dependencies"</em>. Setting <code>protocol: rest</code> + <code>allow_encoded_slash: true</code> on the npm endpoint permits it. Your shipped <code>npm-registry</code> rule already carries that fix; when an endpoint lacks it, the denial shows on the <a href="/learn/live">Live OpenShell</a> <strong>Policy decisions</strong> tab. (It's <strong>not</strong> settable via <code>openshell policy update --add-endpoint</code>; it lives in the policy YAML.)
 </Callout>
 
 But `access: full` lets the agent install **any** ClawHub package. OpenShell's egress proxy can do better — it terminates TLS and evaluates the **HTTP path** (`engine:l7`), so you can vet ClawHub **package-by-package**. Switch the registry to enforced mode and block one you don't trust:
@@ -156,10 +156,10 @@ Community plugins must resolve their own runtime dependencies. If one fails on r
 
 ## 5. Author your own skill
 
-A skill is a small **TypeScript plugin** built against the **OpenClaw plugin SDK**. That SDK ships *inside the sandbox image* — it isn't a public npm package — so the sandbox **is** your skill dev environment. You author and build here, then (next section) **publish to your registry** so the locked agent installs it like any other skill. In production this exact build runs in **CI from the same image**; the steps below are identical.
+A skill is a small **TypeScript plugin** built against the **OpenClaw plugin SDK**. That SDK (`openclaw/plugin-sdk`) is part of the `openclaw` package, and the sandbox image already ships it at exactly your agent's version — so the sandbox **is** your skill dev environment. You author and build here, then (next section) **publish to your registry** so the locked agent installs it like any other skill. In production this exact build runs in **CI from the same image**; the steps below are identical.
 
 <Callout type="note" title="Why not author on your laptop?">
-Because the toolchain lives in the image: <code>openclaw/plugin-sdk</code> (and the <code>openclaw</code> CLI) are only present in the sandbox image, not on npmjs. So you build <em>where the SDK is</em> — the sandbox here, or a container from the same image in CI — and the registry is what carries the result out to the agent. The sandbox is the dev box; the agent is the locked runtime; the registry is the bridge.
+Because the matching toolchain lives in the image: <code>openclaw/plugin-sdk</code> and the <code>openclaw</code> CLI come from the sandbox's own OpenClaw 2026.8.2 (on Node 22). <code>openclaw</code> is on npmjs too, but <code>openclaw@latest</code> needs a newer Node and would not match your agent's version. So you build <em>where the SDK is</em> — the sandbox here, or a container from the same image in CI — and the registry is what carries the result out to the agent. The sandbox is the dev box; the agent is the locked runtime; the registry is the bridge.
 </Callout>
 
 Scaffold a project:
@@ -195,11 +195,12 @@ We run a private **[Verdaccio](https://verdaccio.org) npm registry** *inside the
 There's no OpenClaw-specific "registry endpoint" setting — **it's plain npm scope routing.** `openclaw plugins install @workshop/regtest` is an *npm spec*, so OpenClaw hands resolution to `npm`, and npm routes by **scope** using your sandbox's `~/.npmrc` (`/sandbox/.npmrc`):
 
 ```ini
+registry=http://registry.<openshell-namespace>.svc.cluster.local:4873/
 @workshop:registry=http://registry.<openshell-namespace>.svc.cluster.local:4873/
 //registry.<openshell-namespace>.svc.cluster.local:4873/:_auth=${TOKEN}   # workshop publish/read token
 ```
 
-That `@workshop:registry=…` line **is** the endpoint. Anything matching `@workshop/*` resolves from your in-cluster registry; everything else still uses npm's default `registry` (we lock that down in step 7). Nothing is special about the word `@workshop` — it's an npm scope, and you could add `@acme:registry=…` for a second source the same way.
+That `@workshop:registry=…` line **is** the endpoint. Anything matching `@workshop/*` resolves from your in-cluster registry; the default `registry=` line points everything else there too (Verdaccio proxies and caches npmjs), and step 7 removes the direct ClawHub and npmjs rules from the policy. Nothing is special about the word `@workshop` — it's an npm scope, and you could add `@acme:registry=…` for a second source the same way.
 
 The endpoint must also be allowed by the sandbox **egress policy** — one more rule, same shape as the ClawHub/npm ones:
 
@@ -221,7 +222,7 @@ The sandbox reaches the registry over the <strong>cluster network</strong> — C
 
 ### Authenticate the sandbox to your registry
 
-Verdaccio allows **anonymous read** but **authenticated publish** (`publish: $authenticated`). So before you can publish, create a publish user and write the `/sandbox/.npmrc` shown above for real. The user is created via the registry's own API **from inside the sandbox** (the host can't reach a `…svc.cluster.local` ClusterIP — the sandbox can, through its egress proxy). Run this once in the lab shell — it's a **single line** (`openshell sandbox exec` rejects multi-line arguments):
+Verdaccio allows **anonymous read** but **authenticated publish** (`publish: $authenticated`). So before you can publish, create a publish user and write the `/sandbox/.npmrc` shown above for real. The user is created via the registry's own API **from inside the sandbox** (through the same `in-cluster-registry` rule the agent installs through). Run this once in the lab shell — it's a **single line** (`openshell sandbox exec` rejects multi-line arguments):
 
 ```bash
 openshell sandbox exec -n shifty -- sh -c 'R='"$REGISTRY_HOST"':4873; node -e "const h=require(\"http\"),b=JSON.stringify({name:\"workshop\",password:\"wad26-skills\"});const q=h.request(\"http://$R/-/user/org.couchdb.user:workshop\",{method:\"PUT\",agent:false,headers:{\"content-type\":\"application/json\",\"content-length\":Buffer.byteLength(b)}},r=>{r.resume();r.on(\"end\",()=>console.log(\"registry user:\",r.statusCode))});q.write(b);q.end();"; printf "registry=http://%s/\n@workshop:registry=http://%s/\n//%s/:_auth=%s\n" "$R" "$R" "$R" "$(printf workshop:wad26-skills | base64)" > /sandbox/.npmrc; echo "wrote /sandbox/.npmrc"'
@@ -256,9 +257,9 @@ openshell sandbox exec -n shifty -- openclaw plugins install @workshop/hello-wor
 
 It's now a first-class package in *your* registry (`@workshop/hello-world@0.1.0`), installed from there — no ClawHub round-trip at install time. In production this "vet → mirror → publish" is a CI step; here you did it by hand to see the mechanics.
 
-## 7. Lock the door again — back to the default
+## 7. Lock the door — a single skill source
 
-Everything from step 1 on only worked because you **opened ClawHub temporarily**. Now close it and return to the agent's shipped posture: **the registry is its only skill source.** npm's *default* registry already points at Verdaccio (it uplinks to npmjs and caches deps), so you just drop ClawHub and npm from the policy, leaving **one egress endpoint** — this is exactly the policy your agent boots with:
+Everything from step 1 on only worked because you **opened ClawHub temporarily**. Now close it, and go one step stricter than the policy your agent booted with (which also allows public npm and web search): **the registry becomes its only skill source.** npm's *default* registry already points at Verdaccio (it uplinks to npmjs and caches deps), so you drop ClawHub, public npm and web search, leaving **one egress rule you write yourself** (the inference rule is composed by the attached provider and stays):
 
 Write that locked policy to a file, then apply it (the heredoc fills in *your* registry host from `$REGISTRY_HOST`). `openshell policy set` reads the file from your lab shell, and it **replaces** the whole policy — so this is a complete policy doc (filesystem + process + the single egress rule), not just the network block:
 

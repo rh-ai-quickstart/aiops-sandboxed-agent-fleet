@@ -1,4 +1,4 @@
-Out of the box your agent can *reason*, but it can't *look things up* — it has no search tool, and even if it did, deny-by-default networking would block it. Let's give it **web search**, for free, with no API key: OpenClaw (2026.6 and later — the sandbox runs 2026.8.2) ships a bundled **DuckDuckGo** plugin that scrapes DuckDuckGo's no-JS HTML results. Two things have to line up — the **egress policy** (OpenShell) and the **plugin** (OpenClaw).
+Out of the box your agent can *reason*, but it can't *look things up* — it has no search tool, and even if it did, deny-by-default networking would block it. Let's give it **web search**, for free, with no API key: OpenClaw's **DuckDuckGo** plugin scrapes DuckDuckGo's no-JS HTML results (since OpenClaw 2026.8 it's a separate plugin you install — the sandbox runs 2026.8.2). Two things have to line up — the **egress policy** (OpenShell) and the **plugin** (OpenClaw).
 
 ## 1. The policy already allows it
 
@@ -6,7 +6,7 @@ Search means the agent's `node` process reaches DuckDuckGo's hosts. Our sandbox 
 
 ```bash
 cd ~/nemoclaw-openshift-launchable
-sed -n '/websearch:/,/node }/p' policies/openclaw-sandbox.yaml
+sed -n '/^  websearch:/,$p' policies/openclaw-sandbox.yaml
 ```
 
 ```yaml

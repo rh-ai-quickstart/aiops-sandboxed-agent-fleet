@@ -52,7 +52,7 @@ export function DemoArchitecture() {
         {/* workload */}
         <Node x={28} y={92} w={164} cls="da-blue" stroke={BLUE} title="loadgen" sub="continuous traffic" />
         <Arrow x1={110} y1={146} x2={110} y2={214} label="GET /checkout" color={CYAN} lx={150} ly={184} />
-        <Node x={28} y={214} w={164} h={84} cls="da-green" stroke={C.nvidia} title="shop-app" sub="instrumented service" badge="⚡ runtime fault toggle" />
+        <Node x={28} y={214} w={164} h={84} cls="da-green" stroke={C.nvidia} title="shop-app" sub="instrumented service" badge="⚡ depends on payments" />
         <Node x={28} y={356} w={164} cls="da-amber" stroke={AMBER} title="event-exporter" sub="watches your demo ns" />
 
         {/* instrumentation arrows → backends */}

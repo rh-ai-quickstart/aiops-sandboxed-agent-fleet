@@ -6,7 +6,7 @@ grep OPENCLAW_GATEWAY_PASSWORD ~/nemoclaw-openshift-launchable/.env
 ```
 </Callout>
 
-Your agent's Control UI is running on port `30789` — but **inside the sealed sandbox's private network namespace**. The sandbox is network-sealed, so only `openshell forward` (which tunnels *through* the gateway + supervisor) can bridge into it.
+Your agent's Control UI is running on port `30789` — but **sealed inside the sandbox**, where nothing outside can connect to it directly. The sandbox is network-sealed, so only `openshell forward` (which tunnels *through* the gateway + supervisor) can bridge into it.
 
 ## Expose the UI
 
@@ -17,7 +17,7 @@ openshell forward start 0.0.0.0:30789 shifty --background
 openshell forward list
 ```
 
-In this workshop it's already running for you: the workshop pod has an `openclaw-forward` **sidecar** that runs exactly that command in a loop (and reconnects whenever OpenClaw restarts), and an OpenShift Route (`openclaw-ui`) points at it. Your lab shell shares the pod's network, so you can check the bridge directly:
+In this workshop it's already running for you: the workshop pod has an `openclaw-forward` **sidecar** that runs the same `openshell forward start 0.0.0.0:30789 shifty` (in the foreground, without `--background`) in a loop (and reconnects whenever OpenClaw restarts), and an OpenShift Route (`openclaw-ui`) points at it. Your lab shell shares the pod's network, so you can check the bridge directly:
 
 ```bash
 curl -s -o /dev/null -w "OpenClaw UI: HTTP %{http_code}\n" http://127.0.0.1:30789/
@@ -26,7 +26,7 @@ curl -s -o /dev/null -w "OpenClaw UI: HTTP %{http_code}\n" http://127.0.0.1:3078
 `HTTP 200` means the bridge is live: Route → `openshell forward` → gateway → supervisor → the agent's UI.
 
 <Callout type="note" title="Why a forward, not a Service?">
-A <em>sandbox</em> is network-sealed — its listening port lives in a private network namespace, so nothing can connect to it directly, not even another pod. Only <code>openshell forward</code> (which tunnels <em>through</em> the gateway + supervisor) can reach it. One forward per port; stop one you started yourself with <code>openshell forward stop 30789 shifty</code>.
+A <em>sandbox</em> is network-sealed — its pod is fenced by a NetworkPolicy, so nothing can connect to its listening port directly, not even another pod. Only <code>openshell forward</code> (which tunnels <em>through</em> the gateway + supervisor) can reach it. One forward per port; stop one you started yourself with <code>openshell forward stop 30789 shifty</code>.
 </Callout>
 
 ## Open it in your browser

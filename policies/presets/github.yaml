@@ -1,24 +1,24 @@
-# Example preset — add GitHub access to a running sandbox without recreating it:
-#   nemoclaw <sandbox-name> policy-add policies/presets/github.yaml
-# (network is hot-reloadable; filesystem/process are not.)
+# Example preset — GitHub access, in the OpenShell 0.1.x policy format.
+# Network rules are hot-reloadable: merge this `github` entry into the `network_policies` map
+# of your sandbox's policy file and apply the whole file to the running sandbox:
+#   openshell policy set <sandbox> --policy <your-policy.yaml> --wait
+# (filesystem_policy, landlock and process are fixed at creation.)
 network_policies:
-  - name: github
+  github:
+    name: github
     endpoints:
       - host: api.github.com
         port: 443
         protocol: rest
         enforcement: enforce
+        rules:
+          - allow: { method: GET, path: "/**" }
+          - allow: { method: POST, path: "/repos/**" }
       - host: github.com
         port: 443
-        protocol: rest
         access: full          # git clone over HTTPS needs raw TLS
     binaries:
-      - /usr/bin/git
-      - /usr/local/bin/git
-      - /usr/bin/node
-      - /usr/local/bin/node
-    rules:
-      - method: GET
-        path: /**
-      - method: POST
-        path: /repos/**
+      - { path: /usr/bin/git }
+      - { path: /usr/local/bin/git }
+      - { path: /usr/bin/node }
+      - { path: /usr/local/bin/node }

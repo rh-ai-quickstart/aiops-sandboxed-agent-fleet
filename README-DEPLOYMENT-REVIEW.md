@@ -374,7 +374,7 @@ BOOTSTRAP/workspace staging, orchestrate retries). After the rebase:
 | shellcheck (warning), helm lint/template single + 2 lab attendees, observability charts, YAML/policy sync | ✅ |
 | E2E read-only + isolation (user01, lab mode) | ✅ **97 passed, 0 failed** |
 | Real cluster stop/start | ✅ `maas.sh up` recreated the stopped GPU machine and reloaded the model; `lab.sh wake` restarted every Stopped/Error sandbox of 9 attendees in ~2 min |
-| E2E full mutating lesson flow + isolation on a fresh attendee (user01, build #17) | ✅ **112 passed, 1 failed** (heartbeat `activeHours` format; fixed, then the Heartbeat lesson re-run on build #18: **3/3 passed**) |
+| E2E full mutating lesson flow + isolation on a fresh attendee (user01, build #17; **119/0/0 on build #19 after the audit, §5.7**) | ✅ **112 passed, 1 failed** (heartbeat `activeHours` format; fixed, then the Heartbeat lesson re-run on build #18: **3/3 passed**) |
 | E2E read-only + isolation on the final image (build #18, user03, peer user04) | ✅ **97 passed, 0 failed** (22 skipped: mutating or state-dependent blocks; the harness now tolerates an empty `grep 'a\|b'`) |
 | Incident Lab through the merged orchestrate route (user02, build #17) | ✅ user02 at 100 % errors while user04 stayed at 0 %; 39 s; 0 refused calls; analyst: payments scaled to 0 (ECONNREFUSED in logs and traces, pod deleted in events) → "scale the payments deployment back up"; healthy again after the fix |
 | Investigation of a healthy app (user03, user05) | ✅ `evidence-check` in 15–17 s: "none found — the telemetry shows the app healthy" |
@@ -459,6 +459,45 @@ and validated live before fixing:
 - **Intended refusals are tested:**
   - lesson blocks that demonstrate a refusal carry `# … (expect-fail: <regex>)`;
   - the E2E harness asserts that those commands fail with that output.
+
+### 5.7 Content audit of every lesson after the 0.1.6 migration
+
+**Method.** Every lesson, diagram and curriculum string was read and checked against:
+- the help of the installed CLIs, dumped from the cluster (OpenShell 0.1.6 and OpenClaw 2026.8.2);
+- the OpenShell 0.1.6 source and docs (policy schema, provider placeholders);
+- the repo's own scripts and API routes.
+
+Five parallel audits produced about 100 findings. Every finding was verified before fixing; the ones
+below that change behaviour were also reproduced live.
+
+| Finding | Evidence | Fix |
+|---|---|---|
+| **The Heartbeat lesson never produced a beat.** With no `heartbeat.target`, OpenClaw 2026.8.2 skips every scheduled beat when no chat channel exists. | 1-minute interval, 150 s: no beat. With `target none`: a beat every minute, model calls 200, `system heartbeat last` → `status: ok-empty, reason: interval`. | The lesson sets `target none` and checks the beat with `openclaw system heartbeat last --json`. The old check matched `[heartbeat] started`, so it passed without any beat. |
+| **"Into the Sandbox" described the 0.0.71 network model** (a private network namespace and an `HTTPS_PROXY` to the supervisor). | Same network namespace for the agent's shell and the pod's shell; no `*_PROXY` variable. Agent connections appear as `NET:OPEN … ALLOWED [policy:websearch engine:opa]`; a host outside the policy is refused. | Rewrote the lesson (and `access`, `openshell`, two diagrams) for 0.1.x transparent mediation. |
+| **The policy schema in the OpenShell lesson, `policies/README.md` and `presets/github.yaml` used the old format**: a list instead of a map, plain binaries, top-level `rules`, `filesystem:` and `allowed_binaries`. The preset also called the `nemoclaw` CLI. | OpenShell 0.1.6 schema docs. The rewritten preset was merged into a running sandbox's policy, loaded by the gateway (rules stored as `allow:`), then the original policy was restored. | All three now use the 0.1.6 schema (`network_policies` map, `path:` binaries, per-endpoint `rules: - allow:`, `filesystem_policy`, `run_as_group`). |
+| `openclaw devices approve --latest` presented as approving | Help: "Show the most recent pending request to approve explicitly". | Pairing and Troubleshooting approve by request id. |
+| `openclaw config get` without a path; `policy get` without `--full` presented as the effective policy | Help: `config get <path>`; `--full` adds the provider-composed rules. | Fixed in Chat. |
+| The Alerts exercise ("Build your own") would get a 403 | The Alertmanager tenancy proxy authorizes `prometheusrules` in the namespace; `telemetry-reader` cannot (`oc auth can-i` → no). | The lesson gives the RoleBinding (`monitoring-rules-view`). |
+| A registry skill in `fleet.txt` would never install | `fleet.sh` ran `plugins install` without `--accept-capabilities --force`, hidden behind `\|\| true`. | Flags added. |
+| Inference described as "remote, no GPU" in 12 places | The lab serves Nemotron on the cluster GPU. | Neutral wording: an OpenAI-compatible endpoint, in this lab on the cluster's GPU through OpenShift AI. |
+
+Other fixes:
+- Prose that contradicted the commands next to it:
+  - the npm cache and registry flow in Skills;
+  - "restart the gateway" where it hot-reloads;
+  - the 15-minute Loki window and Tempo path in Orchestration;
+  - the analyst's "what changed?" prompt.
+- Stale facts:
+  - the analyst described as "no egress" (it reaches the skill registry and the model, not telemetry);
+  - a nonexistent `latency` fault and `DEPLOY_MONITORING` flag;
+  - operator namespaces, file sizes and counts.
+- Forbidden or wrong commands in lab mode (`kubectl scale` without `-n "$DEMO_NS"`, `openshell forward list` in the wrong container).
+
+Validation on the rebuilt image (build #19):
+- full mutating lesson flow + isolation on a fresh attendee: **119 passed, 0 failed, 0 skipped**;
+- healthy app: `evidence-check`, "none found", 18 s;
+- Incident Lab: right root cause and action in 31 s, 0 refused model calls, other attendee
+  unaffected, healthy again after the fix.
 
 ---
 

@@ -58,7 +58,7 @@ export function SkillSupplyChain() {
         {/* blocked direct internet path */}
         <Node x={690} y={300} w={180} h={48} fill={C.redTint} stroke={C.red} title="ClawHub / public npm 🌐" sub="" dash />
         <Arrow x1={780} y1={300} x2={780} y2={228} color={C.red} dash />
-        <text x={780} y={372} fontSize={10.2} fill={C.red} textAnchor="middle" fontWeight={700}>✗ DENIED by policy — agent has no direct egress</text>
+        <text x={780} y={372} fontSize={10.2} fill={C.red} textAnchor="middle" fontWeight={700}>✗ DENIED once the policy is locked — no direct egress</text>
 
         <text x={W / 2} y={400} fontSize={11} fill={C.sub} textAnchor="middle">Skills enter only through the registry — authored, or vetted-and-mirrored. Every install crosses one endpoint and lands in the audit log.</text>
       </svg>

@@ -6,11 +6,11 @@ You created `shifty` with `openshell sandbox create`. Each sandbox is reconciled
 oc -n "$OPENSHELL_NS" get pod default--shifty -o wide
 ```
 
-It's a normal pod (named `default--shifty` — the gateway prefixes the workspace) with an `agent` container. Its supervisor runs in a companion `os-supervisor-…` pod. And the OpenClaw agent runs in a **private network namespace** the supervisor built — not the pod's main namespace.
+It's a normal pod (named `default--shifty` — the gateway prefixes the workspace) with an `agent` container. Its supervisor runs in a companion `os-supervisor-…` pod. And the OpenClaw agent runs inside the **OpenShell sandbox runtime** in that container: a Landlock-restricted filesystem, and every network connection checked against the policy before it leaves.
 
 ## Two ways in
 
-**`oc exec`** lands in the pod's *main* namespace — full filesystem, but **not** the agent's sealed network:
+**`oc exec`** lands in the `agent` container directly — outside the gateway, so nothing it does is checked against the policy or recorded in the audit log:
 
 ```bash
 oc -n "$OPENSHELL_NS" exec default--shifty -c agent -- sh -c 'echo HTTPS_PROXY="$HTTPS_PROXY"; ls /sandbox >/dev/null 2>&1 && echo "can see /sandbox" || echo "no /sandbox here"'
@@ -26,7 +26,7 @@ In a multi-user lab your ServiceAccount is <strong>not allowed</strong> to <code
 openshell sandbox exec -n shifty -- sh -c 'echo HTTPS_PROXY="$HTTPS_PROXY"; whoami; pwd'
 ```
 
-Notice the agent's shell has an `HTTPS_PROXY` pointing at the supervisor's egress proxy — every outbound call is forced through the policy. The `oc exec` shell doesn't. That gap *is* the seal.
+Notice there's **no** `HTTPS_PROXY` in either shell: in OpenShell 0.1.x egress is mediated transparently. Every connection the agent opens is checked against its policy (binary, host and port, then the HTTP request) and logged — `openshell logs shifty --source sandbox` shows lines like `NET:OPEN … ALLOWED … [policy:websearch]`; anything not allowed is refused. The `oc exec` shell sits outside that path: no policy decisions, no audit trail. That gap *is* the seal.
 
 ## Run the agent CLI
 
@@ -38,7 +38,7 @@ openshell sandbox exec -n shifty -- openclaw config get gateway
 ```
 
 <Callout type="tip" title="Mental model">
-<strong>OpenShell</strong> manages sandboxes from outside (the control plane: <code>openshell …</code> / <code>oc</code>). <strong>Inside a sandbox</strong> you run the agent's own commands with <code>openshell sandbox exec -n shifty -- openclaw …</code>. Use <code>oc exec</code> only for the pod's outer shell — it bypasses the agent's network seal, so it's not how the agent sees the world.
+<strong>OpenShell</strong> manages sandboxes from outside (the control plane: <code>openshell …</code> / <code>oc</code>). <strong>Inside a sandbox</strong> you run the agent's own commands with <code>openshell sandbox exec -n shifty -- openclaw …</code>. Use <code>oc exec</code> only for the pod's outer shell — it bypasses the gateway's policy checks and audit trail, so it's not how the agent sees the world.
 </Callout>
 
 <Callout type="rh" title="Why the seal matters">

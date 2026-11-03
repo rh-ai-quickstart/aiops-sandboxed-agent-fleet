@@ -100,7 +100,7 @@ network_policies:                        # a MAP of named egress rules — deny-
 Now read it block by block:
 
 - **`version`** — the policy schema version. Just `1`.
-- **`filesystem_policy`** — the agent's view of the disk. `read_only` covers the system dirs (so it can't tamper with binaries or configs); `read_write` is **only** its home (`/sandbox`), `/tmp`, and `/dev/null`. Anything not listed — `/workspace`, the host filesystem — simply isn't there for the agent.
+- **`filesystem_policy`** — the agent's view of the disk. `read_only` covers the system dirs (so it can't tamper with binaries or configs); `read_write` is **only** its home (`/sandbox`), `/tmp`, `/var/tmp`, and `/dev/null`. Anything not listed — `/workspace`, the host filesystem — simply isn't there for the agent.
 - **`landlock`** — those filesystem rules aren't advisory. They're enforced by **Landlock**, a Linux-kernel security module, so even a compromised agent can't step outside them.
 - **`process`** — the agent runs as the unprivileged `sandbox` user, never root (backed by seccomp-BPF + privilege drop).
 - **`network_policies`** — the heart of it: a **map** of named rules, deny-by-default. Each rule pairs **endpoints** (the host + port the agent may reach) with **binaries** (which executables may use that egress). Here there are three — the in-cluster skill registry, public npm, and DuckDuckGo — all for `node`/`npm` only, and nothing else. (In a shared lab the registry host carries your own namespace, <code>registry.<Ns which="openshell" />.svc.cluster.local</code>; the workshop rewrites it at startup.)

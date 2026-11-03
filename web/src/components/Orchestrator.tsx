@@ -66,7 +66,7 @@ export function Orchestrator() {
             {timeline.map((x) => (
               <div key={x.agent} className="flex items-center gap-2">
                 {x.status === "done" ? <CheckCircle2 size={12} className="text-[var(--color-nv-bright)]" /> : <Loader2 size={12} className="animate-spin text-[var(--color-fg-mut)]" />}
-                <span className="font-semibold">{x.agent === "writer" ? "✍️ writer (synthesize)" : `🦞 ${x.agent}`}</span>
+                <span className="font-semibold">{x.agent === "writer" ? "🧠 analyst (concludes)" : `🦞 ${x.agent}`}</span>
                 <span className="text-[var(--color-fg-mut)]">{x.status === "done" ? `${((x.ms || 0) / 1000).toFixed(1)}s` : x.status}{x.retried ? " · retried" : ""}</span>
               </div>
             ))}
@@ -90,7 +90,7 @@ export function Orchestrator() {
       ))}
       {answer && (
         <div className="mt-2 rounded-lg border border-[var(--color-nv-dim)] bg-[var(--color-bg)] p-3 text-sm">
-          <div className="text-xs font-semibold text-[var(--color-fg-mut)]">{answer.by === "writer" ? "🦞 WRITER AGENT — combined root cause & fix" : "SYNTHESIZED ANSWER"}</div>
+          <div className="text-xs font-semibold text-[var(--color-fg-mut)]">{answer.by === "analyst" ? "🧠 ANALYST — combined root cause & fix" : answer.by === "evidence-check" ? "EVIDENCE CHECK — no fault found in the telemetry" : "SYNTHESIZED ANSWER"}</div>
           <pre className="mt-1 whitespace-pre-wrap break-words text-sm">{answer.text}</pre>
         </div>
       )}

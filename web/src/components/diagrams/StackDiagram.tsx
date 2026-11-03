@@ -39,7 +39,7 @@ export function StackDiagram() {
         <Arrow y={180} />
         <Layer y={196} h={76} fill={C.greenTint} stroke={C.nvidia} n={3} title={'OpenClaw sandbox — “Shifty” 🦞'} sub="agent + control UI (sandbox-internal :30789) · password auth · device pairing" />
         <Arrow y={272} />
-        <Layer y={288} h={62} fill={C.data} stroke={C.green} n={4} title="Remote inference endpoint" sub="OpenAI-compatible model — agent calls out" />
+        <Layer y={288} h={62} fill={C.data} stroke={C.green} n={4} title="Model endpoint (OpenAI-compatible)" sub="here: Nemotron on the cluster GPU via OpenShift AI — or a remote API" />
         <rect x={70} y={370} width={W - 140} height={78} rx={12} fill={C.white} stroke={C.border} strokeWidth={1.4} strokeDasharray="6 4" />
         <text x={W / 2} y={392} fontSize={12.5} fill={C.ink} textAnchor="middle" fontWeight={700}>How you reach it (OpenShift Routes)</text>
         <g fontSize={11} fill={C.sub} textAnchor="middle">

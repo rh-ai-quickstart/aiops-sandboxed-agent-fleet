@@ -5,12 +5,12 @@ So far your agent only acts when **you** talk to it. A **heartbeat** makes it ac
 A heartbeat is a **cron-like self-prompt**. Every interval (default **30 minutes**), the OpenClaw gateway starts a turn for the agent with a prompt like *"Run your checklist. Reply `HEARTBEAT_OK` if all is well, or raise an alert."* The agent does its work — check a service, summarise new items, tidy its workspace — and the result is logged (and can notify you). Because it's a normal turn, it's still **fully governed**: the heartbeat agent can only reach the hosts your egress policy allows.
 
 <Callout type="note" title="Heartbeat vs. cron">
-OpenClaw also has plain <code>cron</code> jobs (run a fixed command on a schedule). A <strong>heartbeat</strong> is higher-level: it's the agent <em>thinking</em> on a schedule, with its own context and tools — not just running a script. Use cron for deterministic tasks, a heartbeat for "keep an eye on things."
+OpenClaw also has <strong>automations</strong> (<code>openclaw automations</code>, alias <code>cron</code>): jobs on their own schedule that wake the agent with a specific message. The <strong>heartbeat</strong> is the system-owned one: a periodic, open-ended check-in driven by your checklist. Use an automation for a specific recurring job, a heartbeat for "keep an eye on things."
 </Callout>
 
 ## 1. Give it a checklist — `HEARTBEAT.md`
 
-Just like `SOUL.md` and `IDENTITY.md`, the heartbeat reads a workspace file for *what to do each beat*. Drop a `HEARTBEAT.md` into the agent's workspace:
+Just like `SOUL.md` and `IDENTITY.md`, the checklist lives in a workspace file — and the wake prompt you set in step 2 tells the agent to read it each beat (OpenClaw 2026.8 doesn't load `HEARTBEAT.md` on its own). Drop a `HEARTBEAT.md` into the agent's workspace:
 
 ```bash
 openshell sandbox exec -n shifty -- sh -c 'printf "%s\n" "# Heartbeat checklist" "" "Every beat, do the following and keep it short:" "1. Note the current time and that you are alive." "2. If you have pending tasks in NOTES.md, summarise their status." "3. If everything is nominal, reply with exactly: HEARTBEAT_OK" "4. If something needs my attention, start your reply with: ALERT —" > /sandbox/.openclaw/workspace/HEARTBEAT.md'
@@ -22,16 +22,17 @@ openshell sandbox exec -n shifty -- sh -c 'printf "%s\n" "# Heartbeat checklist"
 
 ## 2. Turn the heartbeat on
 
-Heartbeat lives under `agents.defaults.heartbeat` in `openclaw.json`. Set the interval, the wake prompt, and where it runs. We use `openclaw config set` for each key, then **restart the gateway** so it picks them up:
+Heartbeat lives under `agents.defaults.heartbeat` in `openclaw.json`. Set the interval, the wake prompt, where it runs and where its reply goes. We use `openclaw config set` for each key, then **restart the gateway** so it picks them up:
 
 ```bash
-openshell sandbox exec -n shifty -- sh -c 'openclaw config set agents.defaults.heartbeat.every 1m; openclaw config set agents.defaults.heartbeat.prompt "Read HEARTBEAT.md and run the checklist."; openclaw config set agents.defaults.heartbeat.isolatedSession true; openclaw config set agents.defaults.heartbeat.lightContext true; openclaw config get agents.defaults.heartbeat'
+openshell sandbox exec -n shifty -- sh -c 'openclaw config set agents.defaults.heartbeat.every 1m; openclaw config set agents.defaults.heartbeat.prompt "Read HEARTBEAT.md and run the checklist."; openclaw config set agents.defaults.heartbeat.isolatedSession true; openclaw config set agents.defaults.heartbeat.lightContext true; openclaw config set agents.defaults.heartbeat.target none; openclaw config get agents.defaults.heartbeat'
 ```
 
 - **`every`** — the interval (`1m`, `15m`, `30m`, `1h`…). We set **`1m`** here so you can watch a beat fire in the next step instead of waiting half an hour; the production default is `30m`. The first beat fires one interval *after* the gateway restarts — there's no beat at startup (the log only says `[heartbeat] started`), so a `1m` interval means ~1 minute, a `30m` interval means 30. Bump it back to `30m` once you've seen it (below).
 - **`prompt`** — the wake message. Point it at your `HEARTBEAT.md`.
 - **`isolatedSession`** — run each beat in its **own session** so it doesn't pollute your interactive chat history.
 - **`lightContext`** — load a trimmed context (cheaper tokens) since a heartbeat usually doesn't need the full backstory.
+- **`target`** — where a beat's reply is delivered. `none` keeps it internal. The default (`owner`) needs a chat channel to deliver to; this sandbox has none, so without `target none` every scheduled beat is skipped before the agent even runs.
 
 You can also scope it to working hours with **`activeHours`** (an object: `start`, `end`, optional `timezone`; e.g. only beat 09:00–18:00) so a demo agent isn't burning tokens overnight.
 
@@ -44,20 +45,20 @@ openshell sandbox exec -n shifty -- sh -c \
 
 ## 3. Watch a beat happen
 
-With `every 1m` you only wait about a minute. Give it ~60–90s after the restart, then tail the gateway log — you'll see the heartbeat fire, the agent take a turn, and a `HEARTBEAT_OK` (or an `ALERT —`) come back. If you ran it too soon you'll get the "(no beat yet)" line — just wait and re-run:
+With `every 1m` you only wait about a minute. Give it ~60–90s after the restart, then ask the gateway for the last beat. `null` means none has fired yet — wait and re-run. A beat shows `"reason": "interval"` and a `status`: `ok-empty` means the agent ran the checklist and had nothing to report; a beat with something to say carries the agent's reply:
 
 ```bash
-openshell sandbox exec -n shifty -- sh -c 'tail -n 40 /sandbox/gateway.log | grep -iE "heartbeat|HEARTBEAT_OK|ALERT" || echo "(no beat yet — first one is one interval away)"'
+openshell sandbox exec -n shifty -- openclaw system heartbeat last --json
 ```
 
 Each beat is also an audited turn — you can see it in `openshell logs shifty` like any other agent action.
 
-Once you've watched a beat, set a saner cadence so the agent isn't taking a turn every minute (and optionally scope it to working hours), then restart the gateway again:
+Once you've watched a beat, set a saner cadence so the agent isn't taking a turn every minute (and optionally scope it to working hours). The gateway hot-reloads heartbeat settings, no restart needed:
 
 ```bash
 openshell sandbox exec -n shifty -- sh -c 'openclaw config set agents.defaults.heartbeat.every 30m; openclaw config set agents.defaults.heartbeat.activeHours "{\"start\":\"09:00\",\"end\":\"18:00\"}" --strict-json'
 ```
 
 <Callout type="rh" title="From assistant to operator">
-A heartbeat is what turns a sandboxed model into something that <strong>runs</strong>: it watches, checks, and reports on its own — inside the same deny-by-default seal. In Part VI you'll use this to keep a multi-agent app alive between user requests.
+A heartbeat is what turns a sandboxed model into something that <strong>runs</strong>: it watches, checks, and reports on its own — inside the same deny-by-default seal. The Part VI fleet doesn't use it (its agents run one-shot turns with no gateway), but a heartbeat is how you'd keep an agent watching between incidents.
 </Callout>

@@ -212,7 +212,7 @@ export async function POST(req: Request) {
             if (w && !/^\(.*(failed|error)/i.test(w) && /RECOMMENDED_ACTION:/i.test(w)) answer = w;
           }
         }
-        if (!answer) { answer = `_(writer agent unavailable — raw findings below)_\n\n${findings}`; synthesizedBy = "raw"; }
+        if (!answer) { answer = `_(analyst agent unavailable — raw findings below)_\n\n${findings}`; synthesizedBy = "raw"; }
         emit({ type: "answer", answer, synthesizedBy, ms: Date.now() - ws });
         emit({ type: "done" });
       } catch (e) {

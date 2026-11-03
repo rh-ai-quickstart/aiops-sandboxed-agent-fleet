@@ -1,6 +1,6 @@
 # OpenClaw sandbox policies
 
-Declarative policy for the OpenClaw agent running in the OpenShell sandbox. NemoClaw runs
+Declarative policy for the OpenClaw agent running in the OpenShell sandbox. OpenShell runs
 **deny-by-default**: the agent can only reach endpoints listed here, only via the listed
 binaries, and can only write to the listed filesystem paths.
 
@@ -10,7 +10,8 @@ binaries, and can only write to the listed filesystem paths.
 |------|---------|
 | [`openclaw-sandbox.yaml`](openclaw-sandbox.yaml) | Main sandbox policy (authoring format). **Balanced** tier. |
 | [`openclaw-sandbox.json`](openclaw-sandbox.json) | Same policy in JSON (for tooling / the `sandbox-policy.schema.json` validator). |
-| [`presets/github.yaml`](presets/github.yaml) | Example hot-add preset. |
+| [`presets/github.yaml`](presets/github.yaml) | Example network rule to merge into a running sandbox's policy. |
+| [`presets/cluster-copilot.yaml`](presets/cluster-copilot.yaml) | Least-privilege policy for an agent that reads the cluster API. |
 
 Keep the two main files in sync. To regenerate the JSON from the YAML:
 
@@ -18,34 +19,44 @@ Keep the two main files in sync. To regenerate the JSON from the YAML:
 python3 -c "import yaml,json,sys; json.dump(yaml.safe_load(open('openclaw-sandbox.yaml')), sys.stdout, indent=2)" > openclaw-sandbox.json
 ```
 
-## Schema (per endpoint group)
+## Schema (OpenShell 0.1.x)
+
+`network_policies` is a **map keyed by rule name**; each binary is a `{ path: ... }` object, and
+L7 rules sit under their endpoint with an `allow:` wrapper:
 
 ```yaml
 network_policies:
-  - name: <unique id>                 # e.g. github, pypi
+  github:                             # rule name (unique)
+    name: github
     endpoints:
-      - host: <fqdn>
-        port: <int>
-        protocol: rest | websocket
-        enforcement: enforce          # L7 inspect methods/paths …
-        # access: full                # … OR L4 tunnel (package managers); omit rules
-    binaries:                         # REQUIRED — stops exfil via curl/wget
-      - /usr/bin/node
-      - /usr/local/bin/node
-    rules:                            # required unless access: full
-      - method: GET | POST | PUT | PATCH | DELETE   # wildcard '*' is forbidden
-        path: /api/**                 # glob; /** = all subpaths
+      - host: api.github.com
+        port: 443
+        protocol: rest
+        enforcement: enforce          # L7: inspect methods/paths …
+        rules:
+          - allow: { method: GET, path: "/repos/**" }
+      - host: github.com
+        port: 443
+        access: full                  # … OR an L4 tunnel (package managers, git); no rules
+    binaries:                         # which executables may use these endpoints
+      - { path: /usr/bin/node }
+      - { path: /usr/local/bin/node }
 ```
 
-Static, creation-locked sections (changing them recreates the sandbox):
+Sections fixed at creation (an update cannot change them):
 
 ```yaml
-filesystem:
-  read_write: [/sandbox, /tmp]
-  read_only:  [/usr, /etc, /lib, /bin]
-process:
-  allowed_binaries: [/usr/bin/node, /usr/local/bin/node, /bin/bash, ...]
+version: 1
+filesystem_policy:
+  include_workdir: true
+  read_only:  [/usr, /lib, /proc, /dev/urandom, /app, /etc, /var/log]
+  read_write: [/sandbox, /tmp, /var/tmp, /dev/null]
+landlock: { compatibility: best_effort }
+process: { run_as_user: sandbox, run_as_group: sandbox }
 ```
+
+Reference: the OpenShell policy schema (`docs/how-it-works/policies/schema.mdx` in
+[NVIDIA/OpenShell](https://github.com/NVIDIA/OpenShell)).
 
 ## Tiers
 

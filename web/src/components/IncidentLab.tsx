@@ -8,7 +8,7 @@ import { useStoredString, readStored, writeStored, removeStored } from "@/lib/cl
 type Health = { ns?: string; exists?: boolean; healthy?: boolean; fault?: string; successRps?: number; errorRps?: number; totalRps?: number; errorPct?: number; pods?: string };
 type Invest = { ok?: boolean; results?: { agent: string; out: string }[]; answer?: string; error?: string; synthesizedBy?: string };
 type TL = { agent: string; status: "queued" | "running" | "done"; ms?: number; out?: string; request?: string; started?: number; retried?: boolean };
-const BACKEND: Record<string, string> = { logs: "Loki", metrics: "Prometheus", traces: "Tempo", events: "K8s events", analyst: "(no egress)" };
+const BACKEND: Record<string, string> = { logs: "Loki", metrics: "Prometheus", traces: "Tempo", events: "K8s events", analyst: "(no telemetry access)" };
 const LS_KEY = "incidentlab:v2";
 
 // The last investigation survives reloads/navigation: it lives in the localStorage-backed store.

@@ -77,9 +77,9 @@ export function FleetOrchestration() {
         })}
 
         {/* conclude — the no-egress analyst */}
-        <Node x={wx} y={wy} w={ww} h={wh} cls="fo-amber" stroke={AMBER} title="analyst 🧠" sub="no egress · concludes" />
+        <Node x={wx} y={wy} w={ww} h={wh} cls="fo-amber" stroke={AMBER} title="analyst 🧠" sub="no telemetry access · concludes" />
         <text x={wx + ww / 2} y={wy + 92} fontSize={9.4} className="fo-sub" textAnchor="middle">→ root cause</text>
-        <text x={wx + ww / 2} y={wy + 108} fontSize={9.4} className="fo-sub" textAnchor="middle">→ recommended image</text>
+        <text x={wx + ww / 2} y={wy + 108} fontSize={9.4} className="fo-sub" textAnchor="middle">→ recommended fix</text>
         {/* analyst's verdict back to the human */}
         <Arrow x1={wx + ww / 2} y1={wy + wh} x2={wx + ww / 2} y2={wy + wh + 34} color={AMBER} marker="fa_a" />
         <text x={wx + ww / 2} y={wy + wh + 50} fontSize={9.6} className="fo-ink" textAnchor="middle" fontWeight={700}>root cause + fix → you approve ✋</text>

@@ -40,14 +40,14 @@ const NODES: Record<string, N> = {
     what: <>The kubernetes-sigs/agent-sandbox operator. Reconciles each <code>Sandbox</code> CR into a Pod (+ PVC), in its own <code>agent-sandbox-system</code> namespace.</>,
     ours: <><strong>v1.0.3</strong>, serving <code>agents.x-k8s.io/v1beta1</code> — the API the 0.1.6 gateway speaks. Installed once per cluster, shared by every gateway.</> },
   pod: { id: "pod", label: "Sandbox Pod", sub: "agent + its supervisor", color: PURPLE,
-    what: <>Each sandbox is a Pod running the <strong>agent</strong> container (OpenClaw, Claude Code, a custom claw…), governed by a <strong>supervisor</strong> the gateway delivers. The supervisor dials the gateway, builds the sealed network namespace and enforces the L7 policy proxy.</>,
+    what: <>Each sandbox is a Pod running the <strong>agent</strong> container (OpenClaw, Claude Code, a custom claw…), governed by a <strong>supervisor</strong> the gateway delivers. The supervisor dials the gateway and checks every connection the agent opens against the policy (destination, binary, then L7).</>,
     ours: <>Created by <code>openshell sandbox create</code> in the gateway&apos;s own namespace as <code>default--&lt;name&gt;</code> (plus an <code>os-supervisor-…</code> pod), on the community OpenClaw sandbox image.</> },
   guard: { id: "guard", label: "Network Guardrail + Credential Brokering", sub: "egress · placeholders", color: AMBER,
     what: <>Every outbound connection is checked (deny-by-default, per-binary). Attached <strong>providers</strong> give the sandbox only a placeholder credential; the egress proxy swaps in the real secret, only toward the endpoint the provider profile allows.</>,
-    ours: <>Your agent&apos;s OpenClaw config points at the real remote OpenAI-compatible endpoint (no local GPU) with the placeholder key; the provider profile allows that one host for <code>node</code>/<code>curl</code>.</> },
+    ours: <>Your agent&apos;s OpenClaw config points at the real OpenAI-compatible endpoint (in this lab, Nemotron on the cluster&apos;s GPU via OpenShift AI MaaS) with the placeholder key; the provider profile allows that one host for <code>node</code>/<code>curl</code>.</> },
   addons: { id: "addons", label: "Optional add-ons", sub: "Envoy · cert-manager · LB · GPU", color: SLATE,
     what: <>Envoy Gateway (Gateway API + GRPCRoute), cert-manager (auto cert rotation), a LoadBalancer Service (external addr + SSH relay), and a GPU device plugin (for GPU sandboxes).</>,
-    ours: <>Routes expose the workshop and the agent UI; CPU-only (no GPU device plugin). The OpenShift observability operators add Prometheus/Loki/Tempo, plus a standalone Grafana.</> },
+    ours: <>Routes expose the workshop and the agent UI; the sandboxes are CPU-only (the lab&apos;s GPU node serves the model through OpenShift AI). The OpenShift observability operators add Prometheus/Loki/Tempo, plus a standalone Grafana.</> },
 };
 
 function Chip({ id, sel, onSelect, w }: { id: string; sel: string; onSelect: (id: string) => void; w?: string }) {
