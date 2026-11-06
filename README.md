@@ -194,11 +194,11 @@ sequenceDiagram
 
 **1. Pick an inference source**
 
-| | Remote endpoint | Self-hosted on the cluster |
-|---|---|---|
-| What | Any OpenAI-compatible API (NVIDIA NIM, OpenAI, vLLM…) | NVIDIA Nemotron 3 Nano 30B-A3B FP8 on OpenShift AI MaaS |
-| GPU | none | 1× 48 GB GPU per replica (AWS `g6e.2xlarge`) |
-| Setup | three lines in `.env` | `scripts/maas.sh up` (~30–45 min), then `maas.sh keys` / `maas.sh env` |
+| | Remote endpoint | Self-hosted on the cluster | OpenShift AI MaaS already on the cluster |
+|---|---|---|---|
+| What | Any OpenAI-compatible API (NVIDIA NIM, OpenAI, vLLM…) | NVIDIA Nemotron 3 Nano 30B-A3B FP8 on OpenShift AI MaaS | The existing MaaS route and model |
+| GPU | none | 1× 48 GB GPU per replica (AWS `g6e.2xlarge`) | none on the lab side |
+| Setup | three lines in `.env` | `scripts/maas.sh up` (~30–45 min), then `maas.sh keys` / `maas.sh env` | [Admin guide §4](docs/ADMIN-GUIDE.md#using-an-openshift-ai-maas-that-already-exists-on-the-cluster): one key per user |
 
 **2. Build the workshop image** from this revision (the chart default predates it). See [Deploy in detail](#-deploy-in-detail).
 

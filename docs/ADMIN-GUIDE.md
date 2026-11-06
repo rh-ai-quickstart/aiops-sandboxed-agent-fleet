@@ -133,6 +133,74 @@ event, and stagger the Incident Lab.
 `NEMOCLAW_API_KEY` in `.env` (an OpenAI-compatible endpoint with a publicly trusted certificate, or plain
 http in-cluster: the OpenShell proxy only swaps the key placeholder over TLS it can verify).
 
+### Using an OpenShift AI MaaS that already exists on the cluster
+
+Some clusters (RHDP catalog items, for example) come with Models-as-a-Service already configured,
+sometimes in front of a model served elsewhere. Skip `maas.sh up` and plug the lab into it.
+
+**1. Find the endpoint and the model id.**
+
+```bash
+oc get route -A | grep -i maas                 # public host, e.g. maas.<apps-domain>
+oc get maasmodelrefs -A                         # <namespace>/<model>
+oc get maassubscriptions -A                     # one per user? (owner: users [userN])
+```
+
+The client URL is `https://<maas-host>/<namespace>/<model>/v1`, and the model id is the
+MaaSModelRef name. If the MaaS gateway has no public Route, add one (reencrypt, default ingress
+certificate). The sandbox proxy only injects the key over TLS it can verify, so the in-cluster
+service certificate is not enough.
+
+**2. Check that the model server accepts tool calls.** OpenClaw sends tools on every agent turn, so a
+model served without `--enable-auto-tool-choice --tool-call-parser …` breaks every lesson with an agent
+(`HTTP 400 "auto" tool choice requires …`). Test it with any valid key:
+
+```bash
+curl -s https://<maas-host>/<namespace>/<model>/v1/chat/completions \
+  -H "Authorization: Bearer <api-key>" -H 'Content-Type: application/json' \
+  -d '{"model":"<model>","messages":[{"role":"user","content":"Weather in Paris? Use the tool."}],
+       "tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object",
+       "properties":{"city":{"type":"string"}}}}}],"tool_choice":"auto"}' | jq '.choices[0].finish_reason, .error'
+# expected: "tool_calls" and null
+```
+
+If the answers also start with the model's reasoning (`… </think> …`), the server also needs a
+reasoning parser (`--reasoning-parser nemotron_v3` for Nemotron 3 Nano).
+
+**3. One API key per attendee.** A key's value is shown only once, when it is created, and cannot be
+read back from OpenShift AI. Create new keys:
+
+- **If the cluster has one subscription per user** (RHDP: `nemotron-user1`…), create each key **as
+  that user**, on their own subscription and token limit. Put the users' passwords in a local file
+  that you never commit (`userN password` per line), then:
+
+  ```bash
+  MAAS=https://<maas-host>; NS=<namespace>; MODEL=<model>; API=https://api.<cluster-domain>:6443
+  mkdir -p .lab && touch .lab/maas-keys.csv && chmod 600 .lab/maas-keys.csv
+  while read -r u pw; do
+    lab=$(printf 'user%02d' "${u#user}"); kc=$(mktemp)
+    KUBECONFIG=$kc oc login "$API" -u "$u" -p "$pw" --insecure-skip-tls-verify >/dev/null &&
+    key=$(curl -s -X POST -H "Authorization: Bearer $(KUBECONFIG=$kc oc whoami -t)" \
+          -H 'Content-Type: application/json' -d "{\"name\":\"nemoclaw-$lab\",\"subscription\":\"$MODEL-$u\"}" \
+          "$MAAS/maas-api/v1/api-keys" | jq -r .key) && [[ "$key" == sk-* ]] &&
+    echo "$lab,$key,$MODEL,$MAAS/$NS/$MODEL/v1" >> .lab/maas-keys.csv || echo "$lab: failed"
+    rm -f "$kc"
+  done < users.txt
+  ```
+
+  The subscription name pattern (`$MODEL-$u`) is the one RHDP uses; check it with
+  `oc get maassubscriptions -A`.
+- **Otherwise**, `scripts/maas.sh keys N` creates N keys as the logged-in user. They then share that
+  user's single subscription and token limit.
+
+**4. `.env`:**
+
+```bash
+NEMOCLAW_INFERENCE_BASE_URL="https://<maas-host>/<namespace>/<model>/v1"
+NEMOCLAW_MODEL="<model>"
+LAB_INFERENCE_KEYS_FILE="$PWD/.lab/maas-keys.csv"
+```
+
 ---
 
 ## 5. Configure `.env`
@@ -183,6 +251,31 @@ running OpenClaw gateway (`shifty`) keeps the old one until restarted (step 2 of
 lesson). Avoid it during a session.
 
 Hand each attendee **only their own row** of `.lab/attendees.csv` (the URL contains their access token).
+
+### Deploying over an earlier installation
+
+`lab.sh` expects a cluster without an older copy of this stack. If one is there (for example a
+single-instance install in `openshell` + `demo`, OpenShell 0.0.71, agent-sandbox v0.4.x), clean it up first:
+
+```bash
+helm list -A                                   # what is installed, and under which release names
+oc get crd sandboxes.agents.x-k8s.io -o jsonpath='{.spec.versions[*].name}'   # v1alpha1 = old agent-sandbox
+```
+
+1. **Old single-instance release:** `helm uninstall nemoclaw -n openshell`, then
+   `oc delete namespace openshell demo`. Lab mode does not use these namespaces.
+2. **Old agent-sandbox (`v1alpha1` only):** set `AGENT_SANDBOX_MIGRATE=1` for the first `lab.sh up`. It
+   replaces it with v1.0.3 and **deletes every Sandbox in the cluster**. Remove the flag afterwards.
+3. **Observability installed under other release names** (for example the OTEL collector as
+   `otel-collector` instead of `otel`): Helm refuses to take over objects owned by another release.
+   Either upgrade that release with this chart
+   (`helm upgrade --install otel-collector deploy/observability/otel-collector -n observability-hub`) and
+   run `lab.sh` with `LAB_SKIP_OBSERVABILITY=1`, or uninstall it first.
+4. **Grafana from an older install:** if the new Grafana fails with
+   `Datasource provisioning error: data source not found`, reset its volume (Troubleshooting, §9).
+
+Always deploy from this repository and build the workshop image from the same revision (§3). The
+single-instance `deploy.sh` and the original upstream version are a different stack.
 
 ---
 
@@ -244,6 +337,8 @@ oc label node <new-node> node-role.kubernetes.io/lab=
 | Agent turns fail with `HTTP 500 "credential_unavailable"`; sandbox logs show `DENIED … engine:credential-binding` | The agent holds an outdated provider placeholder: a config with a **copy** of the placeholder (configs must say `${OPENAI_API_KEY}`, as `fleet.sh`, `45-openclaw.sh` and the lessons do), or a process started before a provider update. Fleet: `scripts/lab.sh fleet userNN` re-stages it. `shifty`: re-run step 2 of the Configure lesson. |
 | `pods "…" is forbidden: exceeded quota` | Raise `isolation.limits.quota.*` in `chart/values-lab.yaml` and `scripts/lab.sh user userNN`. |
 | `0/N nodes … max volume count` | EBS attachment limit reached: add lab nodes (§8). |
+| Every agent turn fails with `HTTP 400 "auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser` | The model server does not accept tool calls. OpenClaw sends tools on every turn, so it must: start vLLM with `--enable-auto-tool-choice --tool-call-parser qwen3_coder` (and `--reasoning-parser nemotron_v3`, otherwise the model's reasoning leaks into the answers). `scripts/maas.sh` does this; an external model behind MaaS needs it on its own server. |
+| Grafana stuck after replacing an older install: `Multi-Attach error` on its volume, or `Datasource provisioning error: data source not found` | The chart now updates Grafana with `Recreate` (its volume is ReadWriteOnce). A database left by an older Grafana can still block provisioning: scale `deploy/grafana` in `monitoring` to 0, delete the `grafana` PVC (dashboards and datasources come from the chart) and re-run `scripts/lab.sh up N`. |
 | `oc` commands time out from your laptop | The scripts retry; for long runs prefer a bastion close to the cluster. |
 | After a cluster stop/start, the GPU node (or extra workers) stays `NotReady` with taints `node.kubernetes.io/unreachable` / `…/shutdown` | Instances added after installation stay **stopped** in the cloud and the Machine API does not restart them. `scripts/maas.sh up` recreates stopped GPU machines; for extra workers: `oc -n openshift-machine-api delete machine <stopped-machine>` (its MachineSet creates a new one). Allow ~20 min for the GPU node + driver + model reload before the lab. |
 

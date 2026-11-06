@@ -501,6 +501,30 @@ Validation on the rebuilt image (build #19):
 
 ---
 
+### 5.8 Second cluster: 20 attendees on an RHDP cluster with an external MaaS
+
+The lab was deployed with `lab.sh up 20` on a second OpenShift 4.22.18 cluster (AWS, 13 nodes). That
+cluster already ran an earlier single-instance install and an OpenShift AI MaaS that forwards to an
+**external** Nemotron server.
+
+- **Cleanup:** the earlier install (OpenShell 0.0.71, agent-sandbox v0.4.6) was removed, and
+  agent-sandbox was migrated to v1.0.3 with `AGENT_SANDBOX_MIGRATE=1`. The workshop image was built
+  in the cluster from this branch.
+- **Inference:** one MaaS API key per RHDP user (`user1`…`user20`), each on its own subscription
+  (1M tokens/24 h), written to `.lab/maas-keys.csv`; the MaaS was already published on a public Route.
+- **Found and fixed in the chart:**
+  - updating an existing Grafana deadlocked on its ReadWriteOnce volume (`Multi-Attach`), fixed with
+    `deploymentStrategy: Recreate`;
+  - the Loki datasource now has a fixed `uid`.
+- **Found outside the lab:** the external model server rejected tool calls (`"auto" tool choice
+  requires --enable-auto-tool-choice`), so every agent turn failed. It was fixed on that server; no
+  change was needed in the lab.
+- **Results:**
+  - 20 attendees healthy, 20 fleets;
+  - healthy app: `evidence-check`;
+  - Incident Lab: right root cause and action in 38 s, other attendee unaffected, healthy after the fix;
+  - **full lesson flow + isolation on a fresh attendee: 119 passed, 0 failed, 0 skipped**.
+
 ## 6. Known limitations and follow-ups
 
 - **EBS attachments are the binding constraint for 30 attendees.** Each sandbox has a 2 Gi EBS workspace: about 8 volumes per attendee, against about 26 per AWS node. Add lab nodes (ADMIN-GUIDE §8).

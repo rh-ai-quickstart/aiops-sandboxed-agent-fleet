@@ -34,6 +34,7 @@ data:
     datasources:
       - name: Loki
         type: loki
+        uid: loki
         access: proxy
         url: {{ .Values.endpoints.loki.url }}{{ .Values.endpoints.loki.applicationPath }}
         jsonData:

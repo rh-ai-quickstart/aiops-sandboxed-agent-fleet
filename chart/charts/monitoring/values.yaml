@@ -32,6 +32,10 @@ grafana:
       default_home_dashboard_path: /tmp/dashboards/agent-fleet.json
   service:
     type: ClusterIP
+  # The volume is ReadWriteOnce: a rolling update would start the new pod on another node while the
+  # old one still holds the EBS volume (Multi-Attach). Recreate stops the old pod first.
+  deploymentStrategy:
+    type: Recreate
   persistence:
     enabled: true
     type: pvc
