@@ -4,7 +4,7 @@ Your cluster ships a full observability stack **already running** — part of th
 
 Provided by OpenShift operators across several namespaces:
 
-- **Grafana** — dashboards (login `admin` / `openclaw`), available at **`/grafana`** on the workshop site or via its OpenShift Route (in the `monitoring` namespace).
+- **Grafana** — dashboards, available at **`/grafana`** on the workshop site or via its OpenShift Route (in the shared `monitoring` namespace). On a single-user cluster log in as `admin` / `openclaw`; in a shared lab it opens read-only (anonymous Viewer).
 - **Prometheus (via Thanos Querier)** — metrics from the OpenShift Cluster Monitoring Operator (`openshift-monitoring` namespace).
 - **Alertmanager** — alert routing, also from the Cluster Monitoring Operator (`openshift-monitoring` namespace).
 - **Loki** — log aggregation via the Loki Operator (`openshift-logging` namespace).
@@ -24,16 +24,16 @@ oc -n observability-hub get pods
 oc -n monitoring get pods
 ```
 
-<ServiceLink service="grafana">Open Grafana</ServiceLink> and log in as `admin` / `openclaw`. You'll land on the pre-loaded **OpenShell Agent Fleet** dashboard (CPU / memory / restarts per sandbox); the built-in Kubernetes dashboards are there too. (It's served right here at **`/grafana`** on the workshop site — a same-origin proxy to Grafana's in-cluster Service.)
+<ServiceLink service="grafana">Open Grafana</ServiceLink> (single-user cluster: log in as `admin` / `openclaw`; shared lab: no login, read-only). You'll land on the pre-loaded **OpenShell Agent Fleet** dashboard (CPU / memory / restarts per sandbox); the built-in Kubernetes dashboards are there too. (It's served right here at **`/grafana`** on the workshop site — a same-origin proxy to Grafana's in-cluster Service.)
 
 <Callout type="note" title="Pre-deployed (and how to skip it)">
-The operator-managed components (Prometheus, Loki, Tempo, OTEL Collector) provision with the platform. The standalone Grafana is deployed by the Helm chart and can be opted out by setting <code>DEPLOY_MONITORING=false</code>.
+The operator-managed components (Prometheus, Loki, Tempo, OTEL Collector) provision with the platform. The standalone Grafana is installed by the deploy scripts as its own Helm release (<code>nemoclaw-monitoring</code>) in the shared <code>monitoring</code> namespace.
 </Callout>
 
 ## Watch the fleet
 
-Open the **OpenShell Agent Fleet** dashboard in Grafana. As you create more sandboxes (Part VI's multi-agent app), each shows up here — CPU, memory, restarts per agent pod — plus the gateway's own health. This is your operator view of the whole agent fleet on one screen.
+Open the **OpenShell Agent Fleet** dashboard in Grafana. As you create more sandboxes (Part VI's multi-agent app), each shows up here — CPU, memory, restarts per agent pod — plus the gateway's own health. In a shared lab, pick your namespace (<code><Ns which="openshell" /></code>) in the dashboard's namespace selector. This is your operator view of the whole agent fleet on one screen.
 
-<Callout type="note" title="Why the agents can't read Prometheus themselves">
-Prometheus lives <em>in-cluster</em> (a ClusterIP Service). A gateway sandbox is network-sealed and only egresses to the <strong>external</strong> hosts its policy allows — it can't reach in-cluster services (that's the same isolation that keeps it off the Kubernetes API). Observability here is for <em>you</em>; if you want an agent to reason over metrics, expose a metrics API <em>externally</em> and allow that host in its policy.
+<Callout type="note" title="Can the agents read this telemetry?">
+Not by default. A gateway sandbox is network-sealed and only egresses to the hosts its policy allows — your <code>shifty</code> policy lists no telemetry backend, so it can't query Prometheus, Loki or Tempo (the same seal keeps it off the Kubernetes API). In Part VI you build a <strong>fleet</strong> whose policies each allow exactly <em>one</em> backend (Thanos on its tenancy port, Loki, or Tempo), with a short-lived read token scoped to your own namespaces — so each agent sees only its slice of <em>your</em> telemetry.
 </Callout>

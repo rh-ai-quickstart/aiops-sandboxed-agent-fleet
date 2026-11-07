@@ -30,8 +30,8 @@ declare -A OPERATOR_NS=(
 export CHANNEL
 CHANNEL=$(oc get packagemanifest cluster-logging -o jsonpath='{.status.defaultChannel}' 2>/dev/null) || true
 if [[ -z "$CHANNEL" ]]; then
-  warn "Could not detect channel for cluster-logging — falling back to 'stable-6.1'"
-  CHANNEL="stable-6.1"
+  warn "Could not detect channel for cluster-logging — falling back to 'stable-6.6'"
+  CHANNEL="stable-6.6"
 fi
 log "  logging/loki channel=$CHANNEL"
 

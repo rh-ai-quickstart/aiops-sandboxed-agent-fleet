@@ -13,8 +13,28 @@ metadata:
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
+{{- /*
+Object storage schemas. A fresh install uses .Values.lokiStack.schemas (v13). On an existing
+LokiStack the operator webhook rejects removing or retroactively adding schemas, so the
+live schemas are kept as-is and, if none is v13 yet (e.g. a stack created with the old
+operator default v11 2020-10-11), a v13 entry is appended two days in the future, the
+documented migration path. Offline `helm template` has no live object and renders the values.
+*/}}
+{{- $schemas := .Values.lokiStack.schemas }}
+{{- $existing := lookup "loki.grafana.com/v1" "LokiStack" (include "loki-stack.namespace" .) .Values.lokiStack.name }}
+{{- $live := dig "spec" "storage" "schemas" list ($existing | default dict) }}
+{{- if $live }}
+{{- $schemas = $live }}
+{{- $hasV13 := false }}
+{{- range $live }}{{- if eq (toString .version) "v13" }}{{- $hasV13 = true }}{{- end }}{{- end }}
+{{- if not $hasV13 }}
+{{- $schemas = append $live (dict "version" "v13" "effectiveDate" (dateInZone "2006-01-02" (now | dateModify "+48h") "UTC")) }}
+{{- end }}
+{{- end }}
 spec:
   storage:
+    schemas:
+      {{- toYaml $schemas | nindent 6 }}
     secret:
       name: loki-s3-credentials
       type: s3

@@ -4,7 +4,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 
 export const metadata: Metadata = {
   title: "OpenClaw on OpenShift — Red Hat × NVIDIA Workshop",
-  description: "WeAreDevelopers 2026 — deploy an AI agent (Shifty 🦞) on single-node OpenShift via NVIDIA OpenShell, with a live shell. Build a Cluster Copilot.",
+  description: "Hands-on lab — build a sandboxed AI agent (Shifty 🦞) with NVIDIA OpenShell on Red Hat OpenShift, with a live shell, then run an SRE agent fleet on a real incident.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

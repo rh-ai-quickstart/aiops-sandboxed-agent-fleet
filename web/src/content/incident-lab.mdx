@@ -5,8 +5,8 @@ Now we put the fleet to work on a real incident — one you cause on purpose —
 A fleet of specialists isn't useful until something *combines* them. That's a small **orchestrator** built into this page — no separate app. When you hit **Investigate**, it:
 
 1. **Dispatches** — hands each specialist a prescribed diagnostic probe for its backend and runs it with `openclaw agent --local`, so the work happens **inside the agent's seal**, under its single-backend egress.
-2. **Reads, for real** — each agent runs its **`cluster-telemetry` skill** to query its own backend (`logs`→Loki, `metrics`→Prometheus, `traces`→Tempo, `events`→Loki) and interprets what comes back — the error rate, the error log lines, the failing span, the (absent) events.
-3. **Concludes** — hands all the findings to a dedicated **analyst agent** (no egress, no tools) that reasons over them into a root cause **and a recommended remediation** — derived from the live telemetry (error rate + error logs + failing trace span, with no infra events ruling out a scheduling cause), not guessed.
+2. **Reads, for real** — each agent runs its **`cluster-telemetry` skill** to query its own backend (`logs`→Loki, `metrics`→Prometheus, `traces`→Tempo, `events`→Loki) and interprets what comes back — the error rate, the error log lines, the failing span, and the recent change the events record (`payments` scaled to 0).
+3. **Concludes** — hands all the findings to a dedicated **analyst agent** (no telemetry access, no tool calls) that reasons over them into a root cause **and a recommended remediation** — derived from the live telemetry (error rate + error logs + failing trace span, tied to the change the events show: `payments` scaled to 0), not guessed.
 
 You see **every agent's findings** *and* the analyst's concluded verdict — transparent, not a black box. The conductor never touches a backend itself; the agents do the governed reads. Watch the [Live](/learn/live) **Policy decisions** tab while it runs — each agent, its one allowed host, every call logged.
 
@@ -18,26 +18,26 @@ OpenClaw's built-in <code>web_fetch</code> tool refuses private/internal/cluster
 
 <DemoArchitecture />
 
-A continuous **loadgen** drives the instrumented **shop-app**, which on every checkout makes a real HTTP call to its **`payments`** dependency — and emits all three signals into the cluster's observability stack: **traces** → Tempo (OTLP), **metrics** → Prometheus (a ServiceMonitor scrapes `/metrics`), and **logs** → Loki (Grafana Alloy ships its stdout). A **kubernetes-event-exporter** feeds k8s events into Loki too. The sealed fleet reads those backends — so when `payments` goes down, it shows up across every signal at once, and the live traffic numbers (below) move in real time.
+A continuous **loadgen** drives the instrumented **shop-app**, which on every checkout makes a real HTTP call to its **`payments`** dependency — and emits all three signals into the cluster's observability stack: **traces** → Tempo (OTLP), **metrics** → Prometheus (a ServiceMonitor scrapes `/metrics`), and **logs** → Loki (the cluster's log forwarder ships its stdout). An **event-exporter** dedicated to your instance watches your demo namespace and feeds its Kubernetes events into Loki too. The sealed fleet reads those backends — so when `payments` goes down, it shows up across every signal at once, and the live traffic numbers (below) move in real time.
 
 ## The loop — break, investigate, fix
 
 <IncidentLab />
 
-1. **Deploy** stands up `shop-app` (a small instrumented service) plus a **loadgen** that drives it continuously — so the **live traffic numbers** (success/s, errors/s, error rate) and the logs/metrics/traces are always real.
-2. **Inject fault** takes a **real dependency down**: `kubectl scale deploy/payments --replicas=0`. shop-app's checkout makes a real HTTP call to `payments` on every request — with payments gone, those calls genuinely fail (connection refused) and checkout returns **503**. Nothing artificial; watch the payments pod terminate and the **error rate climb to 100%**.
+1. **Deploy** stands up `shop-app` (a small instrumented service) plus a **loadgen** in your demo namespace that drives it continuously — so the **live traffic numbers** (success/s, errors/s, error rate) and the logs/metrics/traces are always real.
+2. **Inject fault** takes a **real dependency down**: `kubectl -n "$DEMO_NS" scale deploy/payments --replicas=0` (your demo namespace, <code><Ns which="demo" /></code>). shop-app's checkout makes a real HTTP call to `payments` on every request — with payments gone, those calls genuinely fail (connection refused) and checkout returns **503**. Nothing artificial; watch the payments pod terminate and the **error rate climb to 100%**.
 3. **Investigate** runs the fleet against the live telemetry: `metrics` sees the 5xx spike, `logs` sees the `checkout failed: payment call failed…` lines, `traces` sees the failing `charge-payment` span, and **`events` sees the smoking gun** — `payments` was scaled to 0 right as the errors began. The analyst asks *"what changed?"* and pins it on the dependency outage.
-4. **Your fix** is the human-approved remediation — a **real fix**: `kubectl scale deploy/payments --replicas=1`, bringing the dependency back. Watch the error rate fall to 0. Applying it is the one step a human owns.
+4. **Your fix** is the human-approved remediation — a **real fix**: `kubectl -n "$DEMO_NS" scale deploy/payments --replicas=1`, bringing the dependency back. Watch the error rate fall to 0. Applying it is the one step a human owns.
 
 <Callout type="note" title="What “Inject fault” actually does — a real dependency outage">
-No simulated flag. <strong>Inject fault</strong> runs <code>kubectl scale deploy/payments --replicas=0</code> —
+No simulated flag. <strong>Inject fault</strong> runs <code>kubectl -n "$DEMO_NS" scale deploy/payments --replicas=0</code> —
 it genuinely takes shop-app's <code>payments</code> dependency offline. shop-app calls
 <code>payments</code> over HTTP on every checkout, so with it gone those calls fail with a real
 <strong>connection refused</strong> and checkout returns 503. The failure <em>emerges</em> from a
 real broken dependency — exactly like a real outage. The fleet sees it in metrics (5xx), logs
 ("payment call failed…"), traces (failing <code>charge-payment</code> span), and decisively in
 <strong>events</strong> (<code>payments scaled to 0</code>). <strong>Apply remediation</strong> is
-the real fix: <code>kubectl scale deploy/payments --replicas=1</code>. A real problem, diagnosed
+the real fix: <code>kubectl -n "$DEMO_NS" scale deploy/payments --replicas=1</code>. A real problem, diagnosed
 from real telemetry, fixed by a real change.
 </Callout>
 
@@ -50,7 +50,7 @@ In this lab the approved remediation clears the injected fault behind a confirm.
 </Callout>
 
 <Callout type="note" title="Make the incident harder">
-The payment-503 fault is the clean demo (and there's a <code>latency</code> fault too). For the hackathon, inject something the four signals must <em>combine</em> to explain — slow spans in <code>traces</code>, an SLO breach in <code>metrics</code>, errors in <code>logs</code> — and watch the analyst reconcile all four, then recommend the remediation you approve.
+The payments outage (checkout 503s) is the clean demo, and the only fault built in. For the hackathon, inject something the four signals must <em>combine</em> to explain — slow spans in <code>traces</code>, an SLO breach in <code>metrics</code>, errors in <code>logs</code> — and watch the analyst reconcile all four, then recommend the remediation you approve.
 </Callout>
 
 That's the capstone: a governed, observable SRE copilot — spun up repeatably, each agent provably bounded, investigating from this page, and kept honest by a human on the only step that changes the world.

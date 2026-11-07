@@ -27,4 +27,4 @@ spec:
   source: redhat-operators
   sourceNamespace: openshift-marketplace
   installPlanApproval: Manual
-  startingCSV: cluster-observability-operator.v1.4.0
+  startingCSV: cluster-observability-operator.v1.5.3

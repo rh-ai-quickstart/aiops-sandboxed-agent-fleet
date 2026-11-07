@@ -1,0 +1,61 @@
+{{- /*
+Per-instance telemetry identity. The fleet agents get a 24h token of `telemetry-reader`
+(fleet.sh) instead of the shared monitoring-reader: it can only read metrics (Thanos
+tenancy port 9092, `?namespace=`), application logs (Loki, namespaced authz) and pods in
+THIS release's two namespaces. The workshop SA is bound too, so the workshop's own token
+passes the same per-namespace checks.
+*/ -}}
+{{- if .Values.telemetry.enabled }}
+{{- $ns := .Release.Namespace -}}
+{{- $sa := .Values.telemetry.serviceAccountName -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $sa }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "workshop.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $ns }}-telemetry-reader
+  labels:
+    {{- include "workshop.labels" . | nindent 4 }}
+rules:
+  # Thanos Querier tenancy (kube-rbac-proxy SubjectAccessReview in the queried namespace).
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get"]
+  # LokiStack (openshift-logging tenancy): application logs of the bound namespaces.
+  - apiGroups: ["loki.grafana.com"]
+    resources: ["application"]
+    resourceNames: ["logs"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+{{- range (list $ns (include "workshop.demoNamespace" .)) }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: telemetry-reader
+  namespace: {{ . }}
+  labels:
+    app.kubernetes.io/name: workshop
+    app.kubernetes.io/part-of: nemoclaw
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $ns }}-telemetry-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ $sa }}
+    namespace: {{ $ns }}
+  - kind: ServiceAccount
+    name: workshop
+    namespace: {{ $ns }}
+{{- end }}
+{{- end }}

@@ -6,13 +6,15 @@ The cluster is **Red Hat OpenShift** — enterprise Kubernetes with Routes, Secu
 
 ```text
 OpenShift cluster
-├── openshell namespace              ← gateway + agent sandboxes
+├── <openshell namespace>            ← gateway + registry + this workshop + your agent sandboxes
+├── <demo namespace>                 ← the demo app (Part VI incident lab)
 ├── openshift-monitoring namespace   ← Prometheus (Thanos Querier), Alertmanager
-├── openshift-logging namespace      ← Loki Operator (log aggregation)
-├── observability-hub namespace      ← Tempo Operator, OTEL Collector (tracing)
-├── monitoring namespace             ← Grafana (dashboards)
-└── your agent (Part IV)             ← the sandbox you create
+├── openshift-logging namespace      ← LokiStack + ClusterLogForwarder (log aggregation)
+├── observability-hub namespace      ← TempoStack, OTEL Collector, RustFS object storage (tracing)
+└── monitoring namespace             ← Grafana (dashboards)
 ```
+
+Your two namespaces are <code><Ns which="openshell" /></code> and <code><Ns which="demo" /></code> (`openshell` and `demo` on a single-user cluster; one pair per attendee in a shared lab). In the lab shell they're `$OPENSHELL_NS` and `$DEMO_NS`.
 
 ## Inspect it live
 
@@ -25,11 +27,11 @@ oc get nodes
 `Ready` nodes = your cluster. Now look at what's already deployed for you:
 
 ```bash
-oc get ns
-oc -n openshell get pods
+oc get project "$OPENSHELL_NS" "$DEMO_NS"
+oc -n "$OPENSHELL_NS" get pods
 ```
 
-You'll see the `openshell` namespace with the **gateway** (`openshell-0`) running — that's the agent control plane the rest of the workshop uses. You might also see an agent pod like `shifty` if one's already been created; if not, *you* create yours hands-on in **Part IV**.
+You'll see your namespace with the **gateway** (`openshell-0`) running — that's the agent control plane the rest of the workshop uses — plus the skill registry and this workshop's own pod. You might also see an agent pod like `default--shifty` if one's already been created; if not, *you* create yours hands-on in **Part IV**.
 
 It really is OpenShift — check an OpenShift-only API:
 
@@ -40,14 +42,14 @@ oc api-resources | grep -iE "route.openshift.io|security.openshift.io" | head
 
 `SecurityContextConstraints` and `route.openshift.io` are OpenShift extensions a vanilla Kubernetes cluster doesn't have. That's the Red Hat layer your agents run on.
 
-Check the Routes the Helm chart created — these are how you reach the gateway and console from your browser:
+Check the Routes the Helm chart created in your namespace — these are how your browser reaches this workshop and your agent's UI:
 
 ```bash
-oc get routes -A
+oc get routes -n "$OPENSHELL_NS"
 ```
 
 <Callout type="tip" title="Routes, not NodePorts">
-OpenShift Routes give each service a real hostname with TLS termination — no port-forwarding hacks needed. The gateway, console, and Grafana are all reachable at their Route URLs.
+OpenShift Routes give each service a real hostname with TLS termination — no port-forwarding hacks needed. This workshop, your agent's Control UI and Grafana are reachable at their Route URLs. The OpenShell gateway itself is deliberately <em>not</em> on a Route: it's only reachable from inside the cluster.
 </Callout>
 
 <Callout type="rh" title="The base is done">

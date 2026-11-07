@@ -1,0 +1,128 @@
+{{- /*
+Per-instance isolation for shared clusters (lab mode). Covers the release namespace
+(gateway, sandboxes, registry, workshop) and global.demoNamespace (demo app).
+
+NetworkPolicies (isolation.networkPolicies.enabled):
+  - default-deny ingress in both namespaces;
+  - allow ingress from the same namespace, EXCEPT to OpenShell sandbox workload pods
+    (openshell.ai/boundary-role=workload): those stay fenced by the policies the gateway
+    creates (only their supervisor may connect), so the attendee's terminal cannot bypass
+    the sandbox supervisor;
+  - OpenShift router -> workshop pod (workshop + OpenClaw UI Routes);
+  - cluster monitoring (UWM Prometheus) -> demo namespace (shop-app /metrics).
+Egress stays open: sandboxes and agents need the internet and the shared backends; every
+cross-tenant path is closed on the ingress side.
+*/ -}}
+{{- $ns := .Release.Namespace -}}
+{{- $demo := include "nemoclaw.demoNamespace" . -}}
+{{- if .Values.isolation.networkPolicies.enabled }}
+{{- range (list $ns $demo) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lab-default-deny-ingress
+  namespace: {{ . }}
+  labels:
+    {{- include "nemoclaw.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lab-allow-same-namespace
+  namespace: {{ . }}
+  labels:
+    {{- include "nemoclaw.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: openshell.ai/boundary-role, operator: NotIn, values: [workload] }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lab-allow-router
+  namespace: {{ $ns }}
+  labels:
+    {{- include "nemoclaw.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: workshop
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              policy-group.network.openshift.io/ingress: ""
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lab-allow-monitoring
+  namespace: {{ $demo }}
+  labels:
+    {{- include "nemoclaw.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: monitoring
+{{- end }}
+{{- if .Values.isolation.limits.enabled }}
+{{- $lr := .Values.isolation.limits.limitRange }}
+{{- range (list $ns $demo) }}
+---
+# Default requests/limits: the gateway and the gateway-created sandbox/supervisor pods set
+# none, so without defaults they are BestEffort and the scheduler packs them on one node.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: lab-limits
+  namespace: {{ . }}
+  labels:
+    {{- include "nemoclaw.labels" $ | nindent 4 }}
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        {{- toYaml $lr.defaultRequest | nindent 8 }}
+      default:
+        {{- toYaml $lr.default | nindent 8 }}
+      max:
+        {{- toYaml $lr.max | nindent 8 }}
+{{- end }}
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: lab-quota
+  namespace: {{ $ns }}
+  labels:
+    {{- include "nemoclaw.labels" . | nindent 4 }}
+spec:
+  hard:
+    {{- toYaml .Values.isolation.limits.quota.openshell | nindent 4 }}
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: lab-quota
+  namespace: {{ $demo }}
+  labels:
+    {{- include "nemoclaw.labels" . | nindent 4 }}
+spec:
+  hard:
+    {{- toYaml .Values.isolation.limits.quota.demo | nindent 4 }}
+{{- end }}

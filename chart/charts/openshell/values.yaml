@@ -1,38 +1,83 @@
-# Wrapper values — upstream.* keys pass through to the vendored OpenShell chart.
+# Wrapper values — upstream.* keys pass through to the vendored OpenShell chart
+# (oci://ghcr.io/nvidia/openshell/helm-chart 0.1.6, see charts/).
+#
+# NOTE: the fsGroup / runAsUser nulls MUST also be set in the umbrella chart/values.yaml
+# (openshell.upstream.*): Helm drops nulls declared in an intermediate subchart's values
+# when coalescing a nested dependency.
 upstream:
+  # Keeps the Service / StatefulSet named `openshell` and the sandbox ServiceAccount
+  # `openshell-sandbox` (the workshop, fleet.sh and the lessons address the gateway as
+  # openshell.<namespace>.svc.cluster.local:8080).
   fullnameOverride: openshell
   service:
     type: ClusterIP
     port: 8080
 
   server:
+    # Plaintext in-cluster gRPC. Not exposed outside the cluster unless route.enabled=true
+    # (below), which is discouraged: the gateway does not authenticate callers.
     disableTls: true
     logLevel: info
     auth:
+      # Deprecated alias in 0.1.x, still honoured. Every caller is in-cluster (and
+      # namespace-isolated by NetworkPolicies in lab mode).
       allowUnauthenticatedUsers: true
-    sandboxImage: ghcr.io/ansjindal/openclaw-sandbox:2026.6.10
-    sandboxImagePullPolicy: IfNotPresent
     sandboxNamespace: ""
     grpcEndpoint: ""
     defaultRuntimeClassName: ""
+    # Pull secrets for sandbox pods; they must exist in the release namespace. deploy.sh /
+    # lab.sh create `ghcr-pull` and set this when GHCR_TOKEN is set. Format: [{name: ghcr-pull}]
+    sandboxImagePullSecrets: []
+    # Empty = cluster default StorageClass (every sandbox gets a 2Gi workspace PVC).
+    workspaceStorageClass: ""
     sandboxJwt:
+      # OpenShift assigns a random UID that cannot read a 0400 secret file.
       secretDefaultMode: "0444"
+
+  # Default image for `openshell sandbox create` without --from. Replaces the 0.0.x
+  # server.sandboxImage / server.sandboxImagePullPolicy keys (ignored by 0.1.x).
+  sandbox:
+    image:
+      repository: ghcr.io/ansjindal/openclaw-sandbox
+      tag: "2026.8.2"
+      pullPolicy: IfNotPresent
 
   podSecurityContext:
     fsGroup: null
   securityContext:
     runAsUser: null
 
-  supervisor:
-    sideloadMethod: init-container
-
   networkPolicy:
     enabled: true
 
+  # The chart fails the install early when no Sandbox API is served. Keep it on for live
+  # installs; CI turns it off for offline rendering:
+  #   --set openshell.upstream.agentSandbox.preflight.enabled=false
+  agentSandbox:
+    preflight:
+      enabled: true
+
+# ---------------------------------------------------------------------------------------
 # Wrapper-level settings
+# ---------------------------------------------------------------------------------------
+
+# OpenShift Route to the gateway (edge TLS + HTTP/2 for gRPC). OFF by default: the gateway
+# runs plaintext with allowUnauthenticatedUsers, so a public Route lets anyone who knows
+# the hostname create sandboxes. In-cluster callers use the Service.
+route:
+  enabled: false
+
+# One-shot Job that pulls the default sandbox image onto one node so the first
+# `sandbox create` does not wait for a multi-GB pull. Lab mode disables it: a shared
+# prepull DaemonSet in namespace `lab-shared` warms every node instead.
 sandboxPrepull:
   enabled: true
 
+# Private skill registry (Verdaccio), one per instance (per attendee in lab mode).
 registry:
   enabled: true
+  image: docker.io/verdaccio/verdaccio:6.11.1
+  # true = PVC (published skills survive pod restarts); false = emptyDir (lab mode: saves
+  # one EBS attachment per attendee; skills live as long as the registry pod).
+  persistence: true
   storageSize: 2Gi

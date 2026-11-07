@@ -7,7 +7,7 @@ You don't want to repeat *Create Your Agent* → *Give It a Brain* → *Identity
 ```text
 # name      backend(host:port, or "-")                                              skill(@scope/name, or "-")
 logs        logging-loki-gateway-http.openshift-logging.svc.cluster.local:8080      -
-metrics     thanos-querier.openshift-monitoring.svc.cluster.local:9091              -
+metrics     thanos-querier.openshift-monitoring.svc.cluster.local:9092              -
 traces      tempo-tempostack-gateway.observability-hub.svc.cluster.local:8080       -
 events      logging-loki-gateway-http.openshift-logging.svc.cluster.local:8080      -
 analyst     -                                                                       -
@@ -16,7 +16,7 @@ analyst     -                                                                   
 Each column:
 
 - **`name`** — the agent's name. It's also the folder `manifests/openclaw/fleet-roles/<name>/`, where its `IDENTITY.md` and `SOUL.md` live. So `logs` becomes a sandbox named `logs` with the persona from `fleet-roles/logs/`.
-- **`backend`** — the **single** `host:port` this agent's egress policy will allow (its one tool). The Loki Operator gateway `:8080` for the logs agent, Thanos Querier `:9091` for metrics, the Tempo gateway `:8080` for traces, and the Loki gateway again for `events` (which reads the Kubernetes event stream an event-exporter ships into Loki). Use **`-`** for *no egress* — that's the `analyst`, which only reasons over what the others found.
+- **`backend`** — the **single** `host:port` this agent's egress policy will allow (its one tool). The Loki Operator gateway `:8080` for the logs agent, Thanos Querier's **tenancy port `:9092`** for metrics (it only answers namespace-scoped queries, `?namespace=…`, and checks the caller may read that namespace), the Tempo gateway `:8080` for traces, and the Loki gateway again for `events` (which reads the Kubernetes event stream your own event-exporter ships into Loki). Use **`-`** for *no egress* — that's the `analyst`, which only reasons over what the others found.
 - **`skill`** — an optional registry skill to install as a first-class tool (e.g. a `@workshop/promql` skill giving `promql(query)` instead of hand-rolled `curl`). **`-`** means none — the agent still works, querying its backend via the instructions in its `SOUL.md`. Publish a skill with the *Skills & Governance* flow, then drop `@workshop/<name>` in this column.
 
 <Callout type="note" title="Columns are whitespace-separated, not colon-separated">
@@ -25,7 +25,7 @@ The backend is itself a <code>host:port</code> (it contains a colon), so the col
 
 ## The helper — `scripts/fleet.sh`
 
-For each line it creates a sealed sandbox, writes a **policy scoped to just that backend** (everything else stays deny-by-default, plus the in-cluster skill registry), and stages the agent's persona from `manifests/openclaw/fleet-roles/<name>/`.
+For each line it creates a sealed sandbox (with `--policy` and the inference provider attached), writes a **policy scoped to just that backend** (everything else stays deny-by-default, plus the in-cluster skill registry), stages the agent's persona from `manifests/openclaw/fleet-roles/<name>/` — with your namespaces filled in — and hands the agent a short-lived (24h) read token for the telemetry backends that only covers **your** namespaces.
 
 Bring the fleet up (this creates the sandboxes, scopes each policy, and stages each persona — it prints progress per agent):
 
@@ -41,16 +41,16 @@ Then watch them reach Ready (`status` wraps `openshell sandbox list`):
 
 ### Look at what's running
 
-See the sandbox **pods** on the cluster (each agent is a sealed pod):
+See the sandbox **pods** on the cluster (each agent is a sealed pod named `default--<agent>`, next to an `os-supervisor-…` pod):
 
 ```bash
-oc get pods -n openshell
+oc get pods -n "$OPENSHELL_NS"
 ```
 
-The same fleet as **Sandbox custom resources** — what the OpenShell gateway reconciles into those pods:
+The same fleet as **Sandbox custom resources**: the gateway writes one per agent, and the agent-sandbox controller reconciles each into its pod:
 
 ```bash
-oc get sandboxes -n openshell
+oc get sandboxes -n "$OPENSHELL_NS"
 ```
 
 And the **gateway's own view** of the fleet (its phase) — `openshell` talks to the gateway, not the Kubernetes API:
@@ -84,7 +84,7 @@ network_policies:
   in-cluster-registry: { … }                 # every agent: install skills from your registry
   tool-egress:
     name: tool-egress
-    endpoints: [ { host: thanos-querier.openshift-monitoring.svc.cluster.local, port: 9091, access: full } ]
+    endpoints: [ { host: thanos-querier.openshift-monitoring.svc.cluster.local, port: 9092, access: full } ]
     binaries: [ { path: /usr/bin/node }, { path: /usr/bin/curl } ]
 ```
 
@@ -96,27 +96,30 @@ The same `IDENTITY.md` / `SOUL.md` files from *Identity & Soul*, one set per spe
 
 ```markdown
 # Scout 🔎 — logs/SOUL.md
-Backend: Loki Operator gateway. Read the pods' OWN log output:  {namespace="demo"}
-→ which pods are logging, the error lines, and which new pods are silent (never started).
+Backend: Loki Operator gateway. Read the app's OWN log output in your demo namespace:
+  {kubernetes_namespace_name="<demo ns>"} |= "error"  → the error lines and which pods are logging.
 
 # Gauge 📈 — metrics/SOUL.md
-Backend: Thanos Querier. Quantify the fault:  kube_pod_container_status_waiting_reason{namespace="demo"}
-and kube_pod_container_info{...} → the waiting reason + healthy-vs-failing image. Numbers, not narratives.
+Backend: Thanos Querier (tenancy port 9092, ?namespace=<demo ns>). Quantify it with RED metrics:
+  sum by (code) (rate(shop_requests_total{namespace="<demo ns>"}[2m])) + the average latency. Numbers, not narratives.
 
 # Trace 🧵 — traces/SOUL.md
-Backend: Tempo gateway. Search recent traces of the service → is the new version serving any traffic at all?
+Backend: Tempo gateway. Recent ERROR traces of the shop service in your namespace:
+  { resource.service.name = "shop" && resource.k8s.namespace.name = "<demo ns>" && status = error } → WHERE it breaks.
 
 # Probe 🛎️ — events/SOUL.md
-Backend: Loki Operator gateway — but a DIFFERENT stream than Scout: the Kubernetes event feed an event-exporter ships in,
-  {job="kubernetes-event-exporter"} |= "demo"  → the control plane's own words ("Failed to pull image …").
+Backend: Loki Operator gateway — but a DIFFERENT stream than Scout: the Kubernetes events your own event-exporter ships in,
+  {kubernetes_namespace_name="<openshell ns>",kubernetes_container_name="event-exporter"} |= "reason"  → what CHANGED.
 
 # Sage 🧠 — analyst/SOUL.md
-NO egress, NO tools. Reason only over the others' findings → conclude the root cause + recommend the image.
+NO egress, NO tools. Reason only over the others' findings → conclude the root cause + recommend the fix.
 ```
 
 So **`logs` and `events` share the Loki backend but read different things**: Scout reads the
-*application's* log lines (`{namespace="demo"}`), while Probe reads the *cluster's* event stream
-(`{job="kubernetes-event-exporter"}`) — the kubelet/scheduler's own account of what went wrong.
+*application's* log lines (`{kubernetes_namespace_name="<demo ns>"}`), while Probe reads the *cluster's* event stream
+(the `event-exporter` container's output) — the control plane's own account of what changed.
+Your namespaces (<code><Ns which="demo" /></code> and <code><Ns which="openshell" /></code>) are filled into the SOUL files by `fleet.sh`, so in a shared lab every
+attendee's fleet investigates **their own** demo app only.
 **Identity + soul + a tool-scoped policy = a specialist** — and you can read every line of what shapes it.
 
 ## The `cluster-telemetry` skill — how a sealed agent reads its backend
@@ -137,7 +140,7 @@ that has a backend, at `/sandbox/.agents/skills/cluster-telemetry/`:
   renders Kubernetes events readably (`[Warning] Failed: Failed to pull image … (Pod/shop-…)`).
 
 So every agent reaches its backend the **same governed way** — `curl` under its egress policy —
-and you can read the whole skill (it's ~40 lines) in `manifests/openclaw/skills/cluster-telemetry/`.
+and you can read the whole skill (`SKILL.md` plus a ~140-line `tq.js`) in `manifests/openclaw/skills/cluster-telemetry/`.
 
 <Callout type="note" title="Two kinds of 'skill' — don't confuse them">
 The <strong>cluster-telemetry</strong> skill above is staged into every agent automatically (it's
@@ -148,7 +151,7 @@ by default — the agents work fine with just cluster-telemetry + their SOUL.
 </Callout>
 
 <Callout type="note" title="Why this stays safe to scale">
-Adding a fifth agent is one more line in <code>fleet.txt</code> + one persona folder. It never widens the trust boundary: the new agent reaches exactly one more host, that grant is in its policy, and every call it makes is in the audit log.
+Adding a sixth agent is one more line in <code>fleet.txt</code> + one persona folder. It never widens the trust boundary: the new agent reaches exactly one more host, that grant is in its policy, and every call it makes is in the audit log.
 </Callout>
 
 Bring the fleet up, confirm `status` shows them Ready, then head to the next chapter to drive them.

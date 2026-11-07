@@ -1,40 +1,40 @@
 <Callout type="rh" title="Your gateway password (you'll need it to log in)">
-The OpenClaw UI is password-protected. Log in with your gateway password — <strong><code>openshell-wad26</code></strong> by default, or whatever you set as <code>OPENCLAW_GATEWAY_PASSWORD</code>. Print yours any time:
+The OpenClaw UI is password-protected. Log in with your gateway password — <strong><code>openclaw</code></strong> by default on a single-user cluster, a random one per attendee in a shared lab (whatever <code>OPENCLAW_GATEWAY_PASSWORD</code> is). Print yours any time:
 
 ```bash
 grep OPENCLAW_GATEWAY_PASSWORD ~/nemoclaw-openshift-launchable/.env
 ```
 </Callout>
 
-Your agent's Control UI is running on port `30789` — but **inside the sealed sandbox's private network namespace**. The sandbox is network-sealed, so only `openshell forward` (which tunnels *through* the gateway + supervisor) can bridge into it.
+Your agent's Control UI is running on port `30789` — but **sealed inside the sandbox**, where nothing outside can connect to it directly. The sandbox is network-sealed, so only `openshell forward` (which tunnels *through* the gateway + supervisor) can bridge into it.
 
 ## Expose the UI
 
-Point `openshell forward` at your sandbox + the UI port:
+The bridge is `openshell forward`: it listens on a local port and tunnels each connection *through* the gateway and the sandbox's supervisor to the same port inside the sandbox. On a laptop you'd run it yourself (reference — don't run it here):
 
-```bash
+```bash-ref
 openshell forward start 0.0.0.0:30789 shifty --background
 openshell forward list
 ```
 
-Confirm it's serving:
+In this workshop it's already running for you: the workshop pod has an `openclaw-forward` **sidecar** that runs the same `openshell forward start 0.0.0.0:30789 shifty` (in the foreground, without `--background`) in a loop (and reconnects whenever OpenClaw restarts), and an OpenShift Route (`openclaw-ui`) points at it. Your lab shell shares the pod's network, so you can check the bridge directly:
 
 ```bash
 curl -s -o /dev/null -w "OpenClaw UI: HTTP %{http_code}\n" http://127.0.0.1:30789/
 ```
 
-`HTTP 200` means the bridge is live: `openshell forward` → gateway → supervisor → the agent's UI.
+`HTTP 200` means the bridge is live: Route → `openshell forward` → gateway → supervisor → the agent's UI.
 
-<Callout type="note" title="Why not a Route like the gateway?">
-The OpenShell <em>gateway</em> is a normal Service with an OpenShift Route. A <em>sandbox</em> is network-sealed — its listening port lives in a private namespace, so only <code>openshell forward</code> (which tunnels <em>through</em> the gateway + supervisor) can reach it. Stop it later with <code>openshell forward stop</code>; one forward per port.
+<Callout type="note" title="Why a forward, not a Service?">
+A <em>sandbox</em> is network-sealed — its pod is fenced by a NetworkPolicy, so nothing can connect to its listening port directly, not even another pod. Only <code>openshell forward</code> (which tunnels <em>through</em> the gateway + supervisor) can reach it. One forward per port; stop one you started yourself with <code>openshell forward stop 30789 shifty</code>.
 </Callout>
 
 ## Open it in your browser
 
-<ServiceLink service="openclaw">Open the OpenClaw UI</ServiceLink> — log in with the gateway password from the banner above (`openshell-wad26` by default). The Control UI is also available at its OpenShift Route URL.
+<ServiceLink service="openclaw">Open the OpenClaw UI</ServiceLink> — log in with the gateway password from the banner above (`openclaw` by default on a single-user cluster). That link is the `openclaw-ui` Route in your namespace.
 
 ## Also: the OpenShift console (optional)
 
-<ServiceLink service="console">Open the OpenShift console</ServiceLink> — browse your cluster's namespaces, pods, and events.
+<ServiceLink service="console">Open the OpenShift console</ServiceLink> — browse your namespaces, pods, and events. (In a shared lab without per-attendee console logins this link is hidden.)
 
 Next: the first browser connection asks for **device pairing** — approve it.

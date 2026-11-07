@@ -6,16 +6,16 @@ You've built one sealed agent, given it a brain, skills from your own registry, 
 
 When something breaks, you reach for four signals — **logs, metrics, traces, and the cluster's own events**. So the fleet is four read-only specialists plus a lead analyst:
 
-- **logs** 🔎 — reads **Loki** (via the Loki Operator gateway), and can reach `logging-loki-gateway-http.openshift-logging.svc.cluster.local:8080` and nothing else.
-- **metrics** 📈 — reads **Prometheus** (via Thanos Querier), scoped to `thanos-querier.openshift-monitoring.svc.cluster.local:9091` only.
+- **logs** 🔎 — reads **Loki** (via the Loki Operator gateway), and can reach `logging-loki-gateway-http.openshift-logging.svc.cluster.local:8080` and nothing else — filtered to your demo namespace.
+- **metrics** 📈 — reads **Prometheus** (via Thanos Querier's tenancy port), scoped to `thanos-querier.openshift-monitoring.svc.cluster.local:9092` only — which itself only answers for your namespace.
 - **traces** 🧵 — reads **Tempo** (via the Tempo gateway), scoped to `tempo-tempostack-gateway.observability-hub.svc.cluster.local:8080` only.
-- **events** 🛎️ — reads **Kubernetes events** (shipped into Loki by an event-exporter), scoped to the Loki Operator gateway only — the control plane's own account of what's wrong (e.g. "Failed to pull image …").
-- **analyst** 🧠 — **no egress at all**; it concludes the others' findings into a root cause and a recommended fix.
+- **events** 🛎️ — reads **Kubernetes events** (shipped into Loki by an event-exporter that watches your demo namespace), scoped to the Loki Operator gateway only — the control plane's own account of what changed (e.g. "Scaled down replica set payments-… to 0").
+- **analyst** 🧠 — **no telemetry access** (only the model and the in-cluster skill registry); it concludes the others' findings into a root cause and a recommended fix.
 
-Each agent's **policy is specific to its tool** — the metrics agent literally cannot read logs, the analyst cannot reach the network. That's not a limitation to work around; it *is* the product: a fleet you can hand a production incident without widening anyone's blast radius, and prove it from the audit log.
+Each agent's **policy is specific to its tool** — the metrics agent literally cannot read logs, the analyst cannot reach any telemetry backend. That's not a limitation to work around; it *is* the product: a fleet you can hand a production incident without widening anyone's blast radius, and prove it from the audit log.
 
 <Callout type="note" title="Agents diagnose; humans fix">
-These agents are sealed from the in-cluster Kubernetes API — they do <strong>read-only investigation</strong> of telemetry, never cluster administration. So the loop is: the fleet finds the root cause, proposes a change, and a <strong>human approves</strong> before anything is applied. (In production that applied change is a git commit ArgoCD syncs — same shape, just automated delivery.)
+These agents are sealed from the in-cluster Kubernetes API — they do <strong>read-only investigation</strong> of telemetry, with a token that can only read <em>your</em> namespaces, never cluster administration. So the loop is: the fleet finds the root cause, proposes a change, and a <strong>human approves</strong> before anything is applied. (In production that applied change is a git commit ArgoCD syncs — same shape, just automated delivery.)
 </Callout>
 
 ## The arc of this part

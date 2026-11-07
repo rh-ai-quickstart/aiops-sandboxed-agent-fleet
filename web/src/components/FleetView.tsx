@@ -11,13 +11,21 @@ export function FleetView() {
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());   // which agents' SOUL.md is expanded
-  const load = useCallback(async () => {
-    setBusy(true);
-    try { setAgents((await (await fetch("/api/fleet")).json()).agents ?? []); } catch { setAgents([]); }
-    setBusy(false);
+  const fetchAgents = useCallback(async (): Promise<Agent[]> => {
+    try { return (await (await fetch("/api/fleet")).json()).agents ?? []; } catch { return []; }
   }, []);
-  useEffect(() => { load(); }, [load]);
-  const toggle = (n: string) => setOpen((s) => { const x = new Set(s); x.has(n) ? x.delete(n) : x.add(n); return x; });
+  // initial load: state is only set once the request resolves
+  useEffect(() => {
+    let alive = true;
+    fetchAgents().then((a) => { if (alive) setAgents(a); });
+    return () => { alive = false; };
+  }, [fetchAgents]);
+  const load = async () => {
+    setBusy(true);
+    setAgents(await fetchAgents());
+    setBusy(false);
+  };
+  const toggle = (n: string) => setOpen((s) => { const x = new Set(s); if (x.has(n)) x.delete(n); else x.add(n); return x; });
 
   const tool = (e: string) => /loki/.test(e) ? "Loki" : /prometheus/.test(e) ? "Prometheus" : /tempo/.test(e) ? "Tempo" : /registry/.test(e) ? "registry" : e;
 
@@ -62,7 +70,7 @@ export function FleetView() {
         ))}
         {agents && agents.length === 0 && <p className="text-sm text-[var(--color-fg-mut)]">No fleet agents found — bring them up with <code>./scripts/fleet.sh up fleet.txt</code>.</p>}
       </div>
-      <p className="mt-3 text-xs text-[var(--color-fg-mut)]">Every agent shares the in-cluster <strong>registry</strong> (to install skills); beyond that, each reaches <strong>only its own tool</strong>. That's the policy being specific to the agent.</p>
+      <p className="mt-3 text-xs text-[var(--color-fg-mut)]">Every agent shares the in-cluster <strong>registry</strong> (to install skills); beyond that, each reaches <strong>only its own tool</strong>. That&apos;s the policy being specific to the agent.</p>
     </div>
   );
 }

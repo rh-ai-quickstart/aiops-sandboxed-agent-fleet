@@ -23,11 +23,11 @@ sbox-openclaw devices approve <REQUEST_ID>
 ```
 
 <Callout type="tip" title="Approve the most recent">
-In a hurry? <code>sbox-openclaw devices approve --latest</code> selects the newest pending request.
+In a hurry? <code>sbox-openclaw devices approve --latest</code> shows the newest pending request with its id — then approve that id explicitly with the command above.
 </Callout>
 
 <Callout type="note" title="“Scope upgrade pending approval”? Enable approvals first">
-On a brand-new gateway the operator pairs with only the <code>operator.pairing</code> scope — it can <em>request</em> pairing but can't yet <em>approve</em> anyone, so the command above can fail with <strong>“scope upgrade pending approval.”</strong> Fix it once: on the <a href="/learn/live">Live OpenShell</a> page open the <strong>Approvals</strong> panel and click <strong>Enable approvals</strong> — it grants the operator the admin scope (and restarts the agent's gateway) so approvals work from here on. The scripted provisioner does this for you at agent creation; you only need the button if you built the agent by hand or hit the deadlock.
+On a brand-new gateway the operator pairs with only the <code>operator.pairing</code> scope — it can <em>request</em> pairing but can't yet <em>approve</em> anyone, so the command above can fail with <strong>“scope upgrade pending approval.”</strong> Fix it once: open the <a href="/approvals">Approvals</a> page (header toolbar) and click <strong>Enable approvals</strong> — it grants the operator the admin scope (and restarts the agent's gateway) so approvals work from here on. The scripted provisioner does this for you at agent creation; you only need the button if you built the agent by hand or hit the deadlock.
 </Callout>
 
 ## 3. Reconnect

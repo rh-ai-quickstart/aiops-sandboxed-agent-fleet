@@ -21,6 +21,7 @@ import { IncidentLab } from "@/components/IncidentLab";
 import { FleetView } from "@/components/FleetView";
 import { LiveOpenShell } from "@/components/LiveOpenShell";
 import { ServiceLink } from "@/components/ServiceLink";
+import { Ns } from "@/components/LabNs";
 
 const components: MDXComponents = {
   Terminal,
@@ -44,6 +45,7 @@ const components: MDXComponents = {
   FleetView,
   LiveOpenShell,
   ServiceLink,
+  Ns, // <Ns which="openshell" | "demo" /> — this instance's namespace in lesson prose
   pre: CodeBlock, // every fenced code block gets a Copy / Run-in-shell toolbar
 };
 

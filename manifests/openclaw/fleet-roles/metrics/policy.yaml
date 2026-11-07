@@ -1,5 +1,6 @@
 # OpenShell SandboxPolicy for the `metrics` agent — real OpenShell schema, deny-by-default.
-# Applied at sandbox creation via `openshell sandbox create --policy`. Committed here so the
+# Applied at sandbox creation via `openshell sandbox create --policy` (fleet.sh rewrites the
+# registry host to registry.<OPENSHELL_NAMESPACE>.svc.cluster.local). Committed here so the
 # agent's egress is reviewable in git; fleet.sh uses this file when present (else it generates
 # an equivalent one from the backend column in the fleet spec).
 version: 1
@@ -17,6 +18,7 @@ filesystem_policy:
   read_write:
     - /sandbox
     - /tmp
+    - /var/tmp
     - /dev/null
 
 landlock:
@@ -45,7 +47,7 @@ network_policies:
     name: tool-egress
     endpoints:
       - host: thanos-querier.openshift-monitoring.svc.cluster.local
-        port: 9091
+        port: 9092
         access: full
         protocol: rest
         tls: skip

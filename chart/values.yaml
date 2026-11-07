@@ -1,25 +1,84 @@
+# Umbrella chart values. Defaults = single-instance mode (scripts/deploy.sh):
+# release `nemoclaw` in namespace `openshell`, demo app in `demo`, shared Grafana in
+# `monitoring`. Lab (multi-tenant) mode layers values-lab.yaml on top (scripts/lab.sh).
 global:
   # The cluster's apps domain for Route hostnames (e.g. apps.mycluster.example.com).
-  # Auto-detected by deploy.sh: oc get ingresses.config/cluster -o jsonpath='{.spec.domain}'
+  # Auto-detected by deploy.sh / lab.sh: oc get ingresses.config/cluster -o jsonpath='{.spec.domain}'
   clusterAppsDomain: ""
   # Override if the cluster has no default StorageClass. Empty = use cluster default.
   storageClassName: ""
+  # Namespace of the demo app (Incident Lab). Pre-created by deploy.sh / lab.sh; the
+  # workshop gets write access to it. Lab: <user>-demo.
+  demoNamespace: demo
+  # Shared namespace of Grafana + the monitoring-reader (installed as a separate release).
+  monitoringNamespace: monitoring
+  lab:
+    # Attendee id (LAB_USER in the workshop UI). Empty in single-instance mode.
+    user: ""
+
+# Per-namespace isolation for shared clusters (all OFF in single mode, ON in values-lab.yaml).
+# Applies to the release namespace and global.demoNamespace.
+isolation:
+  networkPolicies:
+    # default-deny ingress + allow same-namespace (OpenShell sandbox workload pods stay
+    # fenced by OpenShell's own policies) + router -> workshop + monitoring -> demo.
+    enabled: false
+  limits:
+    # LimitRange (default requests/limits) + ResourceQuota in both namespaces.
+    enabled: false
+    limitRange:
+      defaultRequest: { cpu: 50m, memory: 256Mi }
+      default: { memory: 2Gi }
+      max: { memory: 4Gi }
+    # Sized for OpenShell 0.1.x: every sandbox = workload pod + supervisor pod + 2Gi
+    # workspace PVC. Per attendee ~4 platform pods + 7 sandboxes (shifty, lab, 5 fleet).
+    quota:
+      openshell:
+        pods: "30"
+        requests.cpu: "6"
+        requests.memory: 12Gi
+        limits.memory: 48Gi
+        persistentvolumeclaims: "12"
+        count/sandboxes.agents.x-k8s.io: "10"
+      demo:
+        pods: "10"
+        requests.cpu: "2"
+        requests.memory: 2Gi
+        limits.memory: 4Gi
 
 openshell:
   enabled: true
+  # Must be set HERE (umbrella level), not only in charts/openshell/values.yaml: Helm drops
+  # nulls declared in an intermediate subchart's values when coalescing a nested dependency,
+  # so the upstream defaults (fsGroup/runAsUser 1000) leak through and restricted-v2 rejects
+  # the gateway pod. null lets OpenShift assign IDs from the namespace range.
+  upstream:
+    podSecurityContext:
+      fsGroup: null
+    securityContext:
+      runAsUser: null
 
+# Grafana + the shared event-exporter belong in global.monitoringNamespace, so they are
+# installed as their own release (deploy.sh / lab.sh: chart/charts/monitoring), never as
+# part of an openshell-namespace release.
 monitoring:
-  enabled: true
+  enabled: false
   grafana:
     adminPassword: openclaw
 
 workshop:
   enabled: true
-  image: quay.io/mmurakam/nemoclaw-workshop:v0.2.9
+  # Built from this repository (web/Dockerfile). Override with WORKSHOP_IMAGE (deploy.sh / lab.sh)
+  # only when you rebuild it: it must match this chart (probes on /healthz, docs/CONTRACT.md).
+  image: quay.io/mouachan/nemoclaw-workshop:v0.3.0
   inference:
     baseUrl: ""
     model: ""
     apiKey: ""
+    provider: default
+    existingSecret: ""
+  access:
+    existingSecret: ""
   openclaw:
     agentName: shifty
     gatewayPassword: openclaw

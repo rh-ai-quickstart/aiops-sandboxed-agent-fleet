@@ -14,22 +14,24 @@ governed model access**, never from the website. Each probe is the exact command
 
 ```ts
 const TQ = "node /sandbox/.agents/skills/cluster-telemetry/tq.js";
+const NS = process.env.DEMO_NAMESPACE;   // your demo namespace — every probe is scoped to it
 function buildProbes() {
   const ms = Date.now();
-  const range = `&start=${ms - 3600000}000000&end=${ms}000000&limit=15`; // Loki needs a [start,end] window
+  const range = `&start=${ms - 900000}000000&end=${ms}000000&limit=15`; // last 15 min, newest first (direction=backward)
   return {
-    metrics: { url: `http://<prometheus>/api/v1/query?query=sum by (code) (rate(shop_requests_total[2m]))'
-                     ' http://<prometheus>/api/v1/query?query=avg request latency`,
+    metrics: { url: `https://<thanos>:9092/api/v1/query?namespace=${NS}&query=sum by (code) (rate(shop_requests_total{namespace="${NS}"}[2m]))`,
                hint: "request rate by HTTP code (a 5xx spike is the error rate) + average latency" },
-    logs:    { url: `http://<loki>/loki/api/v1/query_range?query={app="shop-app"} |= "error"${range}`,
+    logs:    { url: `https://<loki>/api/logs/v1/application/loki/api/v1/query_range?query={kubernetes_namespace_name="${NS}"} |= "error"${range}`,
                hint: "the app's recent ERROR log lines (e.g. 'checkout failed: payment provider 503')" },
-    events:  { url: `http://<loki>/loki/api/v1/query_range?query={job="kubernetes-event-exporter"} |= "demo"${range}`,
-               hint: "recent k8s events — if NONE are relevant, that rules OUT an infra cause" },
-    traces:  { url: `http://<tempo>/api/search?q={ resource.service.name="shop" && status=error }`,
+    events:  { url: `https://<loki>/api/logs/v1/application/loki/api/v1/query_range?query={kubernetes_namespace_name="<openshell ns>",kubernetes_container_name="event-exporter"} |= "reason"${range}`,
+               hint: "recent k8s events in the demo namespace — what CHANGED (a scale-down, a deploy)?" },
+    traces:  { url: `https://<tempo>/api/traces/v1/dev/tempo/api/search?q={ resource.service.name="shop" && resource.k8s.namespace.name="${NS}" && status=error }&limit=10`,
                hint: "recent ERROR traces — the failing span shows WHERE the request breaks" },
   };
 }
 ```
+
+Every probe is **scoped to your namespace**: Thanos's *tenancy* port (`9092`) only answers for the `namespace=` you pass and checks the caller may read it, Loki filters on `kubernetes_namespace_name`, the events come from an event-exporter dedicated to your demo namespace, and the traces carry a `k8s.namespace.name` resource attribute. In a shared lab, your fleet never sees another attendee's incident.
 
 ## 2 · Each agent gets a directive sub-task
 
@@ -53,7 +55,7 @@ const subtask =
 ## 3 · How a sealed agent is actually invoked
 
 Each step runs **inside the agent's sandbox**, through OpenClaw's embedded agent. The website
-never calls a model — the sandbox does, through its governed `inference.local`:
+never calls a model — the sandbox does, through its attached inference provider (placeholder key, swapped by the supervisor on egress):
 
 ```ts
 // findings are multi-line, and `sandbox exec` rejects newline args → base64 the message in,
@@ -70,23 +72,40 @@ hosts — the skill is how a sealed agent reads `*.svc.cluster.local` without we
 
 ## 4 · The analyst concludes
 
-The investigators run in **parallel**; when they're all in, their findings go to the no-egress,
-no-tools **analyst**, which reasons over them — combining the error rate, the error logs, the
-failing span, and the *absence* of infra events — into a root cause and a recommended remediation:
+The investigators run in **parallel**; when they're all in, their findings go to the
+**analyst** (no telemetry access, no tool calls), which reasons over them — combining the error rate,
+the error logs, the failing span, and *what changed* according to the events (`payments` scaled to
+0) — into a root cause and a recommended remediation:
 
 ```ts
 const analystPrompt =
  `You are the incident analyst synthesizing an SRE fleet's findings. Reason ONLY over the
   findings below — no tools, no files, no image, and do NOT greet or describe yourself.
-  Begin directly with "ROOT CAUSE:". Cite the evidence (error rate from metrics, the error
-  log lines, the failing trace span; note that no k8s events rules out an infra cause) and
-  give the RECOMMENDED FIX. Then a FINAL line:
-  RECOMMENDED_ACTION: <one concise remediation, e.g. "roll back the change that broke the payment path">`;
+  Begin directly with "ROOT CAUSE:" and cite the evidence (error rate, error logs naming the
+  failing dependency, the failing span). CRITICAL: ask "what changed?" — if the events
+  findings name a recent change (a dependency scaled to 0, a recent deploy) that coincides
+  with when the errors began, THAT change is the root cause and the fix is to REVERSE it.
+  Never state a change or an error the findings do not show. Then a FINAL line:
+  RECOMMENDED_ACTION: <the specific reversal, e.g. "scale the payments deployment back up">`;
 ```
 
 The whole run is streamed to the page as newline-delimited JSON (`plan` → `step start/done` →
 `writer` → `answer`), which is why you see the live timeline, each agent's request, and its
-findings appear as they happen.
+findings appear as they happen. A `heartbeat` event every 15 s keeps the connection alive while a
+slow agent is still thinking (cloud load balancers drop connections idle for 60 s).
+
+Small models sometimes skip or mangle the tool call. So after each agent answers, the orchestrator
+checks that the finding contains its probe's real output (`status=success …` or `traces=N`); if it
+does not, it runs the same probe itself — **inside that agent's sandbox, through its egress
+policy** — and uses it as the finding (*verified probe output*), dropping the agent's own text: a
+reply without the real output may be invented, for instance the example from its instructions. The
+analyst then always reasons over real data, and you can see in the timeline which findings needed
+that safety net.
+
+The orchestrator also counts what the probes found: error log lines, error traces, recent events
+and the 5xx rate. If every probe answered and all of them are zero, it reports the app healthy
+itself (`synthesizedBy: evidence-check`) rather than asking the model, which would otherwise take
+"checkout is failing" at its word. Otherwise the analyst gets those counts along with the findings.
 
 <Callout type="rh" title="Why it's built this way">
 Two honest constraints shaped this: OpenClaw's <code>web_fetch</code> refuses internal hosts (so

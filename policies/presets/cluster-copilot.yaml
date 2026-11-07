@@ -5,13 +5,13 @@
 #
 # READ-ONLY is enforced by RBAC, not the network layer: the agent authenticates
 # with a ServiceAccount bound to the built-in `view` ClusterRole, so the API server
-# itself rejects any write. (See web/src/content/extend.mdx for the SA + token steps.)
+# itself rejects any write.
 #
 # Apply it to a NEW gateway sandbox at creation:
 #   openshell sandbox create --name pod-doctor \
 #     --policy policies/presets/cluster-copilot.yaml \
-#     --from ghcr.io/ansjindal/openclaw-sandbox:2026.6.10 \
-#     -- sh -c 'sleep infinity'
+#     --from ghcr.io/ansjindal/openclaw-sandbox:2026.8.2 \
+#     --detach -- sleep infinity
 #
 # SCHEMA NOTE: this is the real OpenShell sandbox-policy format (see the shipped
 # /etc/openshell/policy.yaml). `network_policies` is a MAP keyed by policy id; each
@@ -44,6 +44,7 @@ filesystem_policy:
   read_write:
     - /sandbox
     - /tmp
+    - /var/tmp
     - /dev/null
 
 landlock:

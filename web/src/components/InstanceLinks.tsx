@@ -2,11 +2,13 @@
 import { useState } from "react";
 import { ExternalLink, Link2 } from "lucide-react";
 import { serviceUrl, SERVICES, type ServiceName } from "@/lib/routes";
+import { useLabEnv } from "@/lib/useLabEnv";
 
 const ORDER: ServiceName[] = ["openclaw", "grafana", "console"];
 
 export function InstanceLinks() {
   const [open, setOpen] = useState(false);
+  const lab = useLabEnv();
 
   return (
     <div className="relative">
@@ -23,10 +25,11 @@ export function InstanceLinks() {
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-mut)]">Open a service</div>
             <ul className="space-y-1">
               {ORDER.map((svc) => {
-                const url = serviceUrl(svc);
+                const url = serviceUrl(svc, lab);
+                if (!url) return null;
                 return (
                   <li key={svc}>
-                    <a href={url ?? "#"} target="_blank" rel="noreferrer"
+                    <a href={url} target="_blank" rel="noreferrer"
                       className="flex items-center justify-between rounded-md px-2 py-1.5 text-[13px] text-[var(--color-fg)] hover:bg-[var(--color-bg-2)]">
                       <span>{SERVICES[svc].label}</span>
                       <ExternalLink size={13} className="text-[var(--color-fg-mut)]" />
@@ -35,6 +38,9 @@ export function InstanceLinks() {
                 );
               })}
             </ul>
+            <div className="mt-2 border-t border-[var(--color-line)] pt-2 font-mono text-[10px] text-[var(--color-fg-mut)]">
+              {lab.labUser ? `${lab.labUser} · ` : ""}ns {lab.openshellNamespace} · demo {lab.demoNamespace}
+            </div>
           </div>
         </>
       )}

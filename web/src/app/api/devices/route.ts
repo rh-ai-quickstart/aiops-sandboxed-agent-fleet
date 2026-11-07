@@ -9,7 +9,6 @@ import { spawn } from "node:child_process";
 // stdin reaches EOF. Under a piped child that leaves stdin open, it hangs forever — so we
 // spawn with stdin "ignore" (immediate EOF) and capture stdout. The phase-45 admin
 // bootstrap is what lets the operator approve at all. (Egress access-requests: /api/drafts.)
-const HOME = process.env.HOME ?? "/root";
 const KUBECONFIG = process.env.KUBECONFIG || "";
 const env = { ...process.env, ...(KUBECONFIG ? { KUBECONFIG } : {}), PATH: `${process.env.PATH ?? ""}:/usr/local/bin:/usr/bin` };
 const AGENT = process.env.OPENCLAW_AGENT_NAME || "shifty";
@@ -18,7 +17,7 @@ const validName = (n: string) => /^[a-z0-9][a-z0-9-]{0,40}$/.test(n);
 const validReqId = (s: unknown) => typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 
 function gwPassword(): string {
-  return process.env.OPENCLAW_GATEWAY_PASSWORD || "openshell-wad26";
+  return process.env.OPENCLAW_GATEWAY_PASSWORD || "openclaw";
 }
 
 // Run `openshell …` with stdin closed (so `sandbox exec` gets EOF and exits) + capture stdout.
@@ -97,9 +96,9 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, action, error: "No operator device paired yet — open the agent's Control UI once (so a device tries to pair), then click Enable approvals again." }, { status: 409 });
       // restart the in-sandbox gateway so it reloads the new scopes
       await openshell(["sandbox", "exec", "-n", AGENT, "--", "sh", "-c",
-        `cd /sandbox && [ -f gateway.pid ] && kill "$(cat gateway.pid)" 2>/dev/null; sleep 2; ` +
+        `cd /sandbox && pkill -f "^openclaw-gateway"; sleep 2; pkill -9 -f "^openclaw-gateway"; ` +
         `setsid nohup openclaw gateway run --port ${UI_PORT} --bind lan --auth password --password '${pw}' --allow-unconfigured >/sandbox/gateway.log 2>&1 </dev/null & ` +
-        `echo $! >/sandbox/gateway.pid; sleep 6; grep -E 'listening on ws' /sandbox/gateway.log | tail -1`], 25000).catch(() => {});
+        `echo $! >/sandbox/gateway.pid; sleep 6; grep -E '\\[gateway\\] ready|listening on ws' /sandbox/gateway.log | tail -1`], 25000).catch(() => {});
       return NextResponse.json({ ok: true, action, output: "Operator granted admin — approvals enabled. Reload the Control UI to reconnect." });
     } catch (e) {
       return NextResponse.json({ ok: false, action, error: e instanceof Error ? e.message : String(e) }, { status: 502 });

@@ -1,6 +1,15 @@
+# Defaults for a standalone install (deploy.sh / lab.sh install this subchart as its own
+# release in the shared `monitoring` namespace and set global.clusterAppsDomain).
+global:
+  clusterAppsDomain: ""
+
 # Standalone Grafana (OpenShift does not include Grafana)
 grafana:
   fullnameOverride: grafana
+  # Namespaced RBAC: the sidecars only read ConfigMaps/Secrets in Grafana's own namespace
+  # (a Role instead of the chart's cluster-wide configmaps+secrets ClusterRole).
+  rbac:
+    namespaced: true
   # Grafana runs as UID 472 — needs nonroot-v2 SCC (granted in scc-grants.yaml).
   securityContext:
     runAsNonRoot: true
@@ -19,9 +28,14 @@ grafana:
       root_url: "%(protocol)s://%(domain)s/grafana/"
       serve_from_sub_path: true
     dashboards:
+      # = sidecar.dashboards.folder (chart default /tmp/dashboards) + the ConfigMap key.
       default_home_dashboard_path: /tmp/dashboards/agent-fleet.json
   service:
     type: ClusterIP
+  # The volume is ReadWriteOnce: a rolling update would start the new pod on another node while the
+  # old one still holds the EBS volume (Multi-Attach). Recreate stops the old pod first.
+  deploymentStrategy:
+    type: Recreate
   persistence:
     enabled: true
     type: pvc
@@ -34,14 +48,15 @@ grafana:
         drop: ["ALL"]
       seccompProfile:
         type: RuntimeDefault
+    # searchNamespace unset (null) = Grafana's own namespace only. Never ALL: any user able
+    # to create a labelled ConfigMap in another namespace could inject a datasource that
+    # sends Grafana's monitoring token to an arbitrary URL.
     dashboards:
       enabled: true
       label: grafana_dashboard
-      searchNamespace: ALL
     datasources:
       enabled: true
       label: grafana_datasource
-      searchNamespace: ALL
 
 # OpenShift monitoring endpoints
 endpoints:
@@ -53,7 +68,9 @@ endpoints:
     infrastructurePath: "/api/logs/v1/infrastructure"
   tempo:
     url: "https://tempo-tempostack-gateway.observability-hub.svc.cluster.local:8080"
-    tenantPath: "/api/traces/v1/dev"
+    # The gateway serves the Tempo query API under /api/traces/v1/<tenant>/tempo
+    # (/api/traces/v1/<tenant>/ itself proxies the Jaeger UI/API, not the Tempo API).
+    tenantPath: "/api/traces/v1/dev/tempo"
 
 # Wrapper-level settings
 grafanaRoute:

@@ -19,6 +19,14 @@ lokiStack:
   size: 1x.demo # Options: 1x.demo, 1x.extra-small, 1x.small, 1x.medium
   storageClassName: "auto" # auto = detect cluster default, or specify: gp3, gp2, standard, managed-premium, thin, etc.
 
+  # Object storage schemas (spec.storage.schemas) for a FRESH install. v13 is the only
+  # non-deprecated schema; the effective date must not be in the future on creation
+  # (the operator needs one currently valid schema). On upgrade the template keeps the
+  # live schemas and appends v13 if missing (see templates/lokistack.yaml).
+  schemas:
+    - version: v13
+      effectiveDate: "2026-11-01"
+
   # Tenant configuration - OpenShift Logging mode for proper RBAC
   tenants:
     mode: openshift-logging # Use openshift-logging mode for RBAC integration

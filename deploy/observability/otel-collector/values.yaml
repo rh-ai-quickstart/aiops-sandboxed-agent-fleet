@@ -2,13 +2,6 @@
 global:
   namespace: observability-hub
 
-# Auto-instrumentation configuration
-instrumentation:
-  python:
-    # Version of the OpenTelemetry Python auto-instrumentation image
-    # https://github.com/open-telemetry/opentelemetry-operator/releases
-    image: "ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python:0.60b0"
-
 # Common configuration for all collectors
 common:
   nameOverride: ""
@@ -167,7 +160,10 @@ instrumentation:
     - baggage
     - b3
   python:
-    image: "ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python:latest"
+    # OpenTelemetry Python auto-instrumentation image, pinned (never :latest).
+    # https://github.com/open-telemetry/opentelemetry-operator/releases
+    # Also the value to export as INSTRUMENTATION_PYTHON_IMAGE for scripts/instrumentation.yaml.
+    image: "ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python:0.66b2"
     env:
       - name: OTEL_PYTHON_PLATFORM
         value: "glibc"

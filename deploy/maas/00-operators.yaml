@@ -1,0 +1,116 @@
+# Self-hosted inference ("MaaS") prerequisites: Node Feature Discovery, NVIDIA GPU Operator and
+# Red Hat OpenShift AI. Applied by scripts/maas.sh. Channels match the OCP 4.22 catalog
+# (verified 2026-11-02: nfd stable, gpu-operator-certified v26.7, rhods-operator stable-3.x).
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-nfd
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: openshift-nfd
+  namespace: openshift-nfd
+spec:
+  targetNamespaces: [openshift-nfd]
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: nfd
+  namespace: openshift-nfd
+spec:
+  name: nfd
+  channel: stable
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nvidia-gpu-operator
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: nvidia-gpu-operator
+  namespace: nvidia-gpu-operator
+spec:
+  targetNamespaces: [nvidia-gpu-operator]
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: gpu-operator-certified
+  namespace: nvidia-gpu-operator
+spec:
+  name: gpu-operator-certified
+  channel: v26.7
+  source: certified-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: redhat-ods-operator
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: rhods-operator
+  namespace: redhat-ods-operator
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: rhods-operator
+  namespace: redhat-ods-operator
+spec:
+  name: rhods-operator
+  channel: stable-3.x
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic
+---
+# Red Hat Connectivity Link (Kuadrant: Authorino + Limitador + DNS) — required by OpenShift AI 3.5
+# for LLMInferenceService and Models-as-a-Service (API keys, rate limits). AllNamespaces install.
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: rhcl-operator
+  namespace: openshift-operators
+spec:
+  name: rhcl-operator
+  channel: stable
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic
+---
+# LeaderWorkerSet — required by OpenShift AI 3.5 for wide expert-parallel LLMInferenceService.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-lws-operator
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: openshift-lws-operator
+  namespace: openshift-lws-operator
+spec:
+  targetNamespaces: [openshift-lws-operator]
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: leader-worker-set
+  namespace: openshift-lws-operator
+spec:
+  name: leader-worker-set
+  channel: stable-v1.0
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic

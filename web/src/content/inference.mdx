@@ -1,16 +1,20 @@
-Your agent needs a **brain** — somewhere to send its thinking. There's no GPU on this box, so we use a **remote, OpenAI-compatible inference endpoint**. You provide three things:
+Your agent needs a **brain** — somewhere to send its thinking. It talks to an **OpenAI-compatible inference endpoint** — in this lab, NVIDIA Nemotron 3 Nano served on the cluster's own GPU through OpenShift AI Models-as-a-Service (any remote OpenAI-compatible API works the same way). You provide three things:
 
 - **Base URL** — the endpoint, ending in `/v1` (e.g. `https://api.openai.com/v1`)
 - **Model** — the model id to use (e.g. `gpt-4o`)
 - **API key** — your provider key (e.g. an `sk-…` key from your provider's dashboard)
 
-<Callout type="note" title="The privacy router — why your key never enters the agent">
-We don't paste the key into the agent. Instead we register the endpoint + key with the <strong>gateway</strong> as a <em>provider</em>, then point the gateway's inference route at it. Your agent later sends its thinking to a virtual host, <code>https://inference.local</code>; the supervisor intercepts that <em>before</em> policy is even evaluated and routes it to the gateway, which injects the real key and calls upstream. So the agent <strong>never holds your key</strong>, and the real inference host <strong>never needs an entry in the agent's egress policy</strong>. That's the OpenShell privacy router.
+<Callout type="note" title="Providers — why your key never enters the agent">
+We don't paste the key into the agent. Instead we register the endpoint + key with the <strong>gateway</strong> as a <em>provider</em>, described by a <em>provider profile</em> (which host, which port, which binaries, how the credential is sent). When a sandbox is created with that provider attached, the agent only gets a <strong>placeholder</strong> in <code>$OPENAI_API_KEY</code> (it looks like <code>openshell:resolve:env:v&lt;revision&gt;_OPENAI_API_KEY</code>). The sandbox <strong>supervisor</strong> swaps the placeholder for the real key on egress — only toward the endpoint the profile allows, and only from the binaries it lists. So the agent <strong>never holds your key</strong>, and a leaked placeholder is worthless anywhere else.
 </Callout>
 
-## Step 1 — Put your values in `.env`
+<Callout type="rh" title="Shared lab? This is already done for you">
+In a facilitated multi-user lab your <code>.env</code> already holds your endpoint, model and personal key, and the gateway provider is registered. <strong>Skip Step 1</strong> (don't edit anything), then run Step 2 and Step 3 to check it works. The provider commands after that are idempotent: run them to see each piece, nothing breaks.
+</Callout>
 
-Open the launchable's `.env` in an editor:
+## Step 1 — Put your values in `.env` (your own deployment only)
+
+Open the workshop's `.env` in an editor:
 
 ```bash
 cd ~/nemoclaw-openshift-launchable
@@ -19,7 +23,7 @@ nano .env        # or: vi .env
 
 Set these three lines (replace the values with your own):
 
-```bash
+```bash-ref
 NEMOCLAW_INFERENCE_BASE_URL=https://api.example.com/v1
 NEMOCLAW_MODEL=your-model-id
 NEMOCLAW_API_KEY=your-api-key-here
@@ -39,95 +43,102 @@ You should see your URL and model, and the key's first few characters (we don't 
 
 ## Step 3 — Verify the endpoint actually works
 
-Before registering it, sanity-check the endpoint with the standard OpenAI-compatible `/v1/models` call, authenticated with your key:
+Before registering it, ask the model for a real answer, authenticated with your key:
 
 ```bash
-curl -sS "$NEMOCLAW_INFERENCE_BASE_URL/models" -H "Authorization: Bearer $NEMOCLAW_API_KEY" | head -c 600; echo
+BODY=$(jq -n --arg m "$NEMOCLAW_MODEL" '{model:$m, max_tokens:200, messages:[{role:"user", content:"Reply with exactly: PONG"}]}')
+curl -sS "$NEMOCLAW_INFERENCE_BASE_URL/chat/completions" -H "Authorization: Bearer $NEMOCLAW_API_KEY" \
+  -H "Content-Type: application/json" -d "$BODY" | jq -r '.choices[0].message.content // .error'
 ```
 
-A JSON list of models (look for `"object": "list"` and model `"id"`s) means your **endpoint + key are good**. Confirm your chosen model is in the list:
+`PONG` means your **endpoint, model and key are good**. (Some endpoints also list their models at `/models`, but a Models-as-a-Service gateway in front of an external model can return an empty list: a real completion is the reliable test.)
+
+Your agent also calls **tools** (run a command, read a file, search the web), so the model server must accept tool calls:
 
 ```bash
-curl -sS "$NEMOCLAW_INFERENCE_BASE_URL/models" -H "Authorization: Bearer $NEMOCLAW_API_KEY" | grep -o "\"id\":\"[^\"]*\"" | head -20
+BODY=$(jq -n --arg m "$NEMOCLAW_MODEL" '{model:$m, max_tokens:300, tool_choice:"auto",
+  messages:[{role:"user", content:"What is the weather in Paris? Use the tool."}],
+  tools:[{type:"function", function:{name:"get_weather", parameters:{type:"object", properties:{city:{type:"string"}}, required:["city"]}}}]}')
+curl -sS "$NEMOCLAW_INFERENCE_BASE_URL/chat/completions" -H "Authorization: Bearer $NEMOCLAW_API_KEY" \
+  -H "Content-Type: application/json" -d "$BODY" | jq -r '.choices[0].finish_reason // .error.message // .error'
 ```
+
+`tool_calls` is what you want: the model chose the tool instead of answering in text.
 
 <Callout type="warn" title="If it fails">
-<strong>401 / Unauthorized</strong> → wrong or expired key. <strong>404</strong> → the base URL probably shouldn't (or should) end in <code>/v1</code> — match your provider's docs. <strong>Connection error</strong> → check the host name. Fix <code>.env</code> and re-run Step 2 + 3 before moving on.
+<strong>401 / Unauthorized</strong> → wrong or expired key. <strong>404</strong> → the base URL probably shouldn't (or should) end in <code>/v1</code> — match your provider's docs. <strong>Connection error</strong> → check the host name. <strong><code>"auto" tool choice requires --enable-auto-tool-choice…</code></strong> → the model server doesn't accept tool calls: your agent can't work until it does (in a facilitated lab, tell the facilitator). Fix <code>.env</code> and re-run Step 2 + 3 before moving on.
 </Callout>
 
-## Two pieces: a *provider* and a *route*
+## Two pieces: a *profile* and a *provider*
 
-The router is two small concepts:
+OpenShell splits model access into two small concepts:
 
-- A **provider** is a named bundle the gateway stores: *which API style* (`openai`, `anthropic`, …), *the endpoint* (a config value), and *the key* (a credential). You can have several — `default`, `openai`, `anthropic`, whatever.
-- The **inference route** is the gateway saying "when anything asks for inference, use *this provider* and *this model*." Exactly one route is active at a time.
+- A **provider profile** is the *access contract*: which host and port the credential may be sent to, how it's sent (`auth_style: bearer` → an `Authorization: Bearer …` header), the env var that carries it inside the sandbox (`OPENAI_API_KEY`), and the **binaries** allowed to make the call (`node`, `curl`). Profiles are templates — they hold no secret.
+- A **provider** is an *instance* of a profile that holds the actual **credential** (your key), stored gateway-side. Sandboxes get access by having the provider **attached**.
 
-So you'll **create a provider** (Step 4), then **point the route at it** (Step 5).
+So you'll **import a profile** (Step 4), **create a provider** from it (Step 5), and attach it when you create the agent (next lesson).
 
-## Step 4 — Register it with the gateway as a provider
+## Step 4 — Import the provider profile
 
-Hand the endpoint + key to the gateway. From here on *the gateway* holds them — not you, and not the agent:
+The workshop rendered a profile for *your* endpoint (its host and port come from `NEMOCLAW_INFERENCE_BASE_URL`). Read it first:
 
 ```bash
-openshell provider delete default 2>/dev/null || true
-openshell provider create --name default --type openai \
-  --credential OPENAI_API_KEY="$NEMOCLAW_API_KEY" \
-  --config OPENAI_BASE_URL="$NEMOCLAW_INFERENCE_BASE_URL"
+cat "$NEMOCLAW_INFERENCE_PROFILE"
+```
+
+Look for `id: maas-openai`, the `credentials` block (`env_vars: [OPENAI_API_KEY]`, `auth_style: bearer`), one `endpoints` entry (your inference host, port, `protocol: rest`) and the `binaries` list. Now hand it to the gateway — `import` the first time, `update` if it already exists (the lab setup may have imported it for you). An update must carry the profile's current `resource_version`, which guards against two people overwriting each other's change, so we copy it from an `export`:
+
+```bash
+P="$NEMOCLAW_INFERENCE_PROFILE_ID"
+if openshell provider profile describe "$P" >/dev/null 2>&1; then
+  RV=$(openshell provider profile export "$P" -o json | jq -r .resource_version)
+  sed "/^id:/a resource_version: $RV" "$NEMOCLAW_INFERENCE_PROFILE" > /tmp/profile-update.yaml
+  openshell provider profile update "$P" -f /tmp/profile-update.yaml
+else
+  openshell provider profile import -f "$NEMOCLAW_INFERENCE_PROFILE"
+fi
+```
+
+## Step 5 — Create the provider (this is where the key goes)
+
+Create a provider of that type. We pass the key through the **environment** (`--credential OPENAI_API_KEY` with no `=value` reads it from the CLI's env), so it never shows up in your shell history or the process list. From here on *the gateway* holds the key — not you, and not the agent:
+
+```bash
+openshell provider get "$NEMOCLAW_INFERENCE_PROVIDER" >/dev/null 2>&1 \
+  || OPENAI_API_KEY="$NEMOCLAW_API_KEY" openshell provider create \
+       --name "$NEMOCLAW_INFERENCE_PROVIDER" \
+       --type "$NEMOCLAW_INFERENCE_PROFILE_ID" \
+       --credential OPENAI_API_KEY
 ```
 
 Flag by flag:
 
-- `--name default` — what you'll call this provider (the route references it by name).
-- `--type openai` — the API dialect. Your endpoint is OpenAI-compatible, so `openai`.
-- `--credential OPENAI_API_KEY=…` — **this is where your key goes.** It's stored gateway-side as a *credential*, never written into the agent. (You can also pass just `--credential OPENAI_API_KEY` with no `=value` to have the gateway read it from its own environment.)
-- `--config OPENAI_BASE_URL=…` — non-secret settings; here, the endpoint.
+- `--name "$NEMOCLAW_INFERENCE_PROVIDER"` — what you'll call this provider (`default` unless you changed it). Sandboxes reference it by name.
+- `--type maas-openai` — the profile id from Step 4: it decides where the key may go and who may send it.
+- `--credential OPENAI_API_KEY` — **this is where your key goes.** It's stored gateway-side as a *credential*, never written into the agent.
 
-The gateway probes the endpoint and prints the **validated endpoints** it found (e.g. `…/v1/chat/completions`). That confirms the provider can actually reach your model.
-
-## Step 5 — Point the inference route at your model
-
-Bind that provider + your model as the gateway's active inference route:
-
-```bash
-openshell inference set --provider default --model "$NEMOCLAW_MODEL"
-```
-
-`--provider` is the name from Step 4; `--model` is the exact model id (the one you confirmed in Step 3).
-
-## Step 6 — Confirm the route
-
-```bash
-openshell inference get
-```
-
-You should see `Provider: default` and your `Model:`. That's the route every agent reaches via `inference.local`.
-
-## Inspect or change it later
-
-You don't have to redo everything to tweak one thing. List the providers you've registered:
+## Step 6 — Confirm
 
 ```bash
 openshell provider list
 ```
 
-Inspect one — the key *value* is never printed, only its name:
+You should see your provider with type `maas-openai` and **one credential key**. Only key *names* are ever shown — never values:
 
 ```bash
-openshell provider get default
+openshell provider get "$NEMOCLAW_INFERENCE_PROVIDER"
 ```
 
-To swap the model but keep the provider (reference — run it when you actually want to change models):
+## Change it later
+
+To **rotate the key** (reference — run it when you actually have a new key). Attached sandboxes get a re-issued placeholder (a new revision) and the old one eventually stops resolving, so restart a running OpenClaw gateway afterwards (step 2 of *Give It a Brain*):
 
 ```bash-ref
-openshell inference update --model <new-model>
+OPENAI_API_KEY=<new-key> openshell provider update "$NEMOCLAW_INFERENCE_PROVIDER" --credential OPENAI_API_KEY
 ```
 
-To remove a provider (reference). To **rotate a key**, delete and re-create it with the new `--credential` — the route keeps working because it points to the provider by name:
+The **model** is not part of the provider any more — it's chosen by the client (OpenClaw's config, next lessons). To point at a different host, edit the profile and re-run Step 4.
 
-```bash-ref
-openshell provider delete default
-```
-
-<Callout type="rh" title="Brain wired — through the router">
-Endpoint verified, registered as a gateway provider, and the inference route is set. Your key lives in the gateway, not the agent. When you build the agent next, it points at <code>https://inference.local</code> — so its egress policy won't even mention your inference host. On to creating the agent.
+<Callout type="rh" title="Brain wired — through a provider">
+Endpoint verified, profile imported, key held by the gateway. When you build the agent next, you attach this provider with <code>--provider</code>: the sandbox gets a placeholder key, the supervisor injects the real one on the way out — and only toward your inference host, only from <code>node</code>/<code>curl</code>. On to creating the agent.
 </Callout>

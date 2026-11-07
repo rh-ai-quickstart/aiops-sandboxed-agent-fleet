@@ -7,8 +7,8 @@ Two paths run through OpenShell: the **agent path** (how an agent comes alive an
 <OpenShellRuntime />
 
 ### The agent path
-- **Gateway** — the control plane (gRPC :8080). It allocates sandboxes, mints each a scoped identity, and hosts the policy engine + inference router. On K8s it's a StatefulSet whose *compute driver* watches the Sandbox CRD.
-- **Sandbox Supervisor** (`openshell-sandbox`) — sideloaded into **every** sandbox as an init-container. It builds the agent's isolated network namespace, exchanges a bootstrap token for a sandbox JWT (`IssueSandboxToken`), relays exec/SSH, and enforces sandbox-side policy.
+- **Gateway** — the control plane (gRPC :8080). It allocates sandboxes, mints each a scoped identity, and hosts the policy engine + the credential store (providers). On K8s it's a StatefulSet whose *compute driver* watches the Sandbox CRD.
+- **Sandbox Supervisor** — delivered by the gateway to **every** sandbox (on Kubernetes you'll see an `os-supervisor-…` pod per sandbox). It exchanges a bootstrap token for a sandbox JWT, loads the policy and provider state, relays exec, logs and file sync, checks every connection the agent opens against the policy (destination, binary, then the HTTP request), and swaps credential placeholders for real secrets on egress.
 - **Agent Harness** — the agent itself (Definition · Memory · Skills), wrapped by the supervisor in every gateway-created sandbox. Your `shifty` agent is exactly this: the OpenClaw image + a `.md` workspace, running as an `agents.x-k8s.io` `Sandbox` the gateway manages.
 - **Sub-Agents** — focused agents the harness can spawn, each its own sandbox with its own identity and policy.
 - **Accelerated Tooling** — what the agent reaches *through the guardrail*: filesystem, search, Omniverse/CAD, models — via API, CLI, or MCP.
@@ -16,8 +16,8 @@ Two paths run through OpenShell: the **agent path** (how an agent comes alive an
 ### The guardrail path
 - **Policy Engine + Validator** — deny-by-default. Per binary, which hosts/methods/paths are allowed; a draft validator can propose additions for a human to approve.
 - **Network Guardrail** — kernel-level, per-binary egress (`git → github.com ✓`, `curl → anywhere ✗`). Stops exfil through unknown channels; instant, no restart on change.
-- **Privacy Router** — gateway-created sandboxes call one URL, `inference.local`; the router injects the real backend key + model. **This workshop uses exactly this:** you register your endpoint + key as a gateway *provider* (Part IV) and the agent only ever talks to `inference.local`, so it never holds your key and the real host never appears in its egress policy.
-- **Model** — where inference runs. Here, a remote OpenAI-compatible endpoint (no local GPU); in a GPU cluster, an in-cluster vLLM.
+- **Credential brokering (providers)** — secrets live in the gateway as *providers*, typed by *provider profiles* (allowed host, port, binaries). An attached sandbox sees only a **placeholder** (`openshell:resolve:env:…`); the supervisor injects the real key on egress, only to the profile's endpoint. **This workshop uses exactly this:** you register your endpoint + key as a gateway *provider* (Part IV) and attach it to your agent, so the agent calls your real endpoint yet never holds your key.
+- **Model** — where inference runs: an OpenAI-compatible endpoint. In this lab, NVIDIA Nemotron served by vLLM on the cluster's own GPU and published through OpenShift AI Models-as-a-Service (any remote OpenAI-compatible API works too).
 
 <Callout type="note" title="Why a runtime (not just a prompt)">
 Safety as a system prompt is a suggestion; safety at the <em>network and process layer</em> is enforced. Even if the agent is prompt-injected, the guardrail only lets its binaries reach the hosts and paths you allowed.
@@ -25,7 +25,7 @@ Safety as a system prompt is a suggestion; safety at the <em>network and process
 
 ## On Kubernetes — the real deployment
 
-The Helm chart deploys the gateway as a **StatefulSet**; the **agent-sandbox controller** turns `Sandbox` CRs into pods; each pod's **supervisor** dials back to the gateway over mTLS. Click any object — the detail shows how *this* launchable maps to it:
+The Helm chart deploys the gateway as a **StatefulSet**; the **agent-sandbox controller** turns `Sandbox` CRs into pods; each sandbox's **supervisor** dials back to the gateway with its sandbox identity. Click any object — the detail shows how *this* workshop maps to it:
 
 <OpenShellOnK8s />
 
@@ -38,33 +38,33 @@ Every sandbox is bounded at five independent layers — some locked at creation,
 | **Network** | egress / data exfiltration | CONNECT proxy + OPA policy (per-binary) | ✅ `openshell policy set` |
 | **Filesystem** | binary tampering, cred theft | Landlock LSM (kernel) | ❌ recreate sandbox |
 | **Process** | priv-esc, fork bombs, bad syscalls | seccomp-BPF + privilege drop | ❌ recreate sandbox |
-| **Inference** | credential exposure | privacy router intercepts `inference.local` | ✅ `openshell inference set` |
-| **Gateway** | unauth access, transport tampering | mTLS + token auth (cluster CA) | config |
+| **Credentials** | key exposure / exfiltration | provider profile + placeholder swap on egress | ✅ `openshell sandbox provider attach` |
+| **Gateway** | unauth access, transport tampering | mTLS / OIDC (here: in-cluster only, no public Route) | config |
 
 That's the defense-in-depth for OpenShell-governed sandboxes: even a fully prompt-injected agent is boxed in by the kernel and the proxy, not by a prompt. On top, OpenShift contributes its own half of the story — SCCs, pod security settings, and NetworkPolicy — the cluster-native guardrails every sandbox inherits.
 
 <Callout type="note" title="Where this deployment simplifies">
-CPU-only, remote inference instead of a local model, and unauthenticated CLI instead of OIDC. The <em>shape</em> is identical to a full production deployment — fewer optional add-ons.
+CPU-only sandboxes, inference through an OpenAI-compatible endpoint (in this lab, served on the cluster's own GPU by OpenShift AI Models-as-a-Service), and an unauthenticated plaintext gateway reachable <strong>only inside the cluster</strong> (no public Route) instead of mTLS/OIDC. The <em>shape</em> is identical to a full production deployment — fewer optional add-ons.
 </Callout>
 
 ## The foundation: agent-sandbox (the SIG project)
 
-The bottom layer is community Kubernetes: the `Sandbox` CRD (`agents.x-k8s.io`) and its controller come from **[kubernetes-sigs/agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox)**. OpenShell adds the gateway, supervisor, privacy router, and policy *on top*. That's why `oc get sandboxes -A` works with plain `oc` — they're standard Kubernetes objects.
+The bottom layer is community Kubernetes: the `Sandbox` CRD (`agents.x-k8s.io`) and its controller come from **[kubernetes-sigs/agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox)**. OpenShell adds the gateway, supervisor, credential brokering, and policy *on top*. That's why `oc get sandboxes -n "$OPENSHELL_NS"` works with plain `oc` — they're standard Kubernetes objects.
 
 <Callout type="note" title="Version detail that matters">
-We pin agent-sandbox to <strong>v0.4.6</strong> (the last <code>v1alpha1</code>-only release). The gateway (0.0.71) verifies a sandbox pod is owned by a <code>v1alpha1</code> Sandbox; agent-sandbox v0.5.0 switched to <code>v1beta1</code> ownerReferences, which the gateway rejects — so gateway-driven sandboxes would crash-loop. Pinning v0.4.6 is what makes <code>openshell sandbox create</code> reach <code>Ready</code>.
+The gateway (OpenShell <strong>0.1.6</strong>) speaks the <code>agents.x-k8s.io/v1beta1</code> Sandbox API, so we install agent-sandbox <strong>v1.0.3</strong> — the release OpenShell 0.1.6 is tested against. The gateway and the controller must agree on the API version: an older <code>v1alpha1</code>-only controller would leave gateway-created sandboxes stuck before <code>Ready</code>. The CRD and its controller are cluster-wide and installed once; every gateway (one per attendee in a shared lab) uses them.
 </Callout>
 
 ## How you reach the gateway
 
-Inside the cluster the gateway is a Service, `svc/openshell:8080`. The Helm chart creates an **OpenShift Route** that gives this Service a public hostname — so the CLI and your browser reach it over HTTPS at the Route URL. The `openshell` CLI is pre-registered against this endpoint:
+Inside the cluster the gateway is a Service, `svc/openshell:8080`. Your lab shell runs **inside the cluster** (it's the workshop pod), so the `openshell` CLI is pre-registered against that in-cluster endpoint — `http://openshell.<namespace>.svc.cluster.local:8080`:
 
 ```bash
 openshell status
 ```
 
-<Callout type="note" title="Route-based access">
-The gateway's OpenShift Route provides a stable hostname with TLS termination. The <code>openshell</code> CLI is registered against this endpoint; the same commands work whether you're on the lab shell or connecting from your laptop.
+<Callout type="note" title="Why no public Route?">
+This gateway accepts unauthenticated clients, so it is deliberately <strong>not</strong> published on an OpenShift Route: only workloads inside the cluster (your lab shell, the workshop's API) can reach it, and in a shared lab a NetworkPolicy keeps other attendees out of your namespace. A production gateway would use mTLS or OIDC and could then be exposed safely.
 </Callout>
 
 ## Drive the gateway from the CLI
@@ -94,9 +94,9 @@ Part III (next) goes deeper on the control plane and the policy model, with a th
 Because the gateway is just gRPC, *anything* that speaks it can drive the fleet — the `openshell` CLI you just used, the companion `openshell-ui` web console, or live panels wired straight into this workshop site from the gateway API.
 
 <Callout type="note" title="Two things both called &quot;gateway&quot;">
-You'll hear "gateway" twice: the <strong>OpenShell gateway</strong> (control plane, :8080, reached via its Route) and the <strong>OpenClaw gateway</strong> (the agent's own control UI, :30789, inside the sandbox). Different things — keep them straight.
+You'll hear "gateway" twice: the <strong>OpenShell gateway</strong> (control plane, :8080, reached in-cluster) and the <strong>OpenClaw gateway</strong> (the agent's own control UI, :30789, inside the sandbox). Different things — keep them straight.
 </Callout>
 
-<Callout type="rh" title="What this launchable exercises">
-You'll drive the <strong>gateway</strong> for real: <code>openshell sandbox create</code> mints an identity, writes a <code>Sandbox</code> CR, the controller reconciles a Pod, and the <strong>supervisor</strong> sideloads + connects back — all the way to <code>Ready</code>. Your agent reaches its model through the OpenShell <strong>inference router</strong> (<code>inference.local</code>), so it never holds your key. The next lessons run these paths end to end.
+<Callout type="rh" title="What this workshop exercises">
+You'll drive the <strong>gateway</strong> for real: <code>openshell sandbox create</code> mints an identity, writes a <code>Sandbox</code> CR, the controller reconciles a Pod, and the <strong>supervisor</strong> starts and connects back — all the way to <code>Ready</code>. Your agent reaches its model through an attached <strong>provider</strong>: it holds only a placeholder key and the supervisor injects the real one on egress. The next lessons run these paths end to end.
 </Callout>

@@ -11,13 +11,13 @@ const TABS = ["Fleet", "Sandboxes", "Policy", "Network"] as const;
 type Tab = (typeof TABS)[number];
 
 const SANDBOXES = [
-  { name: "openclaw-sandbox", phase: "Ready", image: "openclaw:2026.6.10", ns: "openclaw" },
-  { name: "pod-doctor", phase: "Ready", image: "sandboxes/openclaw", ns: "openshell" },
-  { name: "scout", phase: "Provisioning", image: "sandboxes/openclaw", ns: "openshell" },
+  { name: "shifty", phase: "Ready", image: "openclaw-sandbox:2026.8.2", ns: "user07-openshell" },
+  { name: "pod-doctor", phase: "Ready", image: "openclaw-sandbox:2026.8.2", ns: "user07-openshell" },
+  { name: "scout", phase: "Provisioning", image: "openclaw-sandbox:2026.8.2", ns: "user07-openshell" },
 ];
 const EGRESS = [
   { v: "ALLOW", bin: "/usr/bin/oc", host: "kubernetes.default.svc:443", m: "GET /api/v1/pods" },
-  { v: "ALLOW", bin: "/usr/bin/node", host: "inference.local:443", m: "POST /v1/chat" },
+  { v: "ALLOW", bin: "/usr/local/bin/node", host: "<your-endpoint>:443", m: "POST /v1/chat (credential injected)" },
   { v: "DENY", bin: "/usr/bin/curl", host: "evil.example.com:443", m: "CONNECT" },
   { v: "DENY", bin: "/usr/bin/oc", host: "kubernetes.default.svc:443", m: "DELETE /api/v1/…" },
 ];
@@ -77,8 +77,8 @@ export function OpenShellConsole() {
           <div className="space-y-1.5 font-mono text-[11px] text-[var(--color-fg-dim)]">
             <div className="text-[var(--color-fg-mut)]"># pod-doctor · allowed egress (deny-by-default)</div>
             <div>✓ /usr/bin/oc → kubernetes.default.svc:443 · GET /api/**, /apis/**</div>
-            <div>✓ /usr/bin/node → inference.local:443 · POST /v1/**</div>
-            <div>✓ /usr/bin/oc → thanos-querier.openshift-monitoring.svc:9091 · GET /api/v1/**</div>
+            <div>✓ /usr/local/bin/node → &lt;your-endpoint&gt;:443 · POST /v1/** (credential injected)</div>
+            <div>✓ /usr/bin/curl → thanos-querier.openshift-monitoring.svc:9092 · GET /api/v1/** (?namespace=your demo ns)</div>
             <div className="text-[var(--color-fg-mut)]">✗ everything else — blocked</div>
           </div>
         )}

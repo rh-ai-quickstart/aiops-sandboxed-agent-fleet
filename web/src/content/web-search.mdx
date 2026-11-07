@@ -1,4 +1,4 @@
-Out of the box your agent can *reason*, but it can't *look things up* — it has no search tool, and even if it did, deny-by-default networking would block it. Let's give it **web search**, for free, with no API key: OpenClaw 2026.6 ships a bundled **DuckDuckGo** plugin that scrapes DuckDuckGo's no-JS HTML results. Two things have to line up — the **egress policy** (OpenShell) and the **plugin** (OpenClaw).
+Out of the box your agent can *reason*, but it can't *look things up* — it has no search tool, and even if it did, deny-by-default networking would block it. Let's give it **web search**, for free, with no API key: OpenClaw's **DuckDuckGo** plugin scrapes DuckDuckGo's no-JS HTML results (since OpenClaw 2026.8 it's a separate plugin you install — the sandbox runs 2026.8.2). Two things have to line up — the **egress policy** (OpenShell) and the **plugin** (OpenClaw).
 
 ## 1. The policy already allows it
 
@@ -6,7 +6,7 @@ Search means the agent's `node` process reaches DuckDuckGo's hosts. Our sandbox 
 
 ```bash
 cd ~/nemoclaw-openshift-launchable
-sed -n '/websearch:/,/node }/p' policies/openclaw-sandbox.yaml
+sed -n '/^  websearch:/,$p' policies/openclaw-sandbox.yaml
 ```
 
 ```yaml
@@ -22,34 +22,34 @@ websearch:
 
 `access: full` matters here: an HTTPS scrape is a raw TLS tunnel, so the rule grants a full L4 connection (not a parsed REST allow-list) to **only** those three hosts, for **only** `node`. Everything else stays denied.
 
-## 2. Turn the DuckDuckGo plugin on
+## 2. Install and turn on the DuckDuckGo plugin
 
-Two config keys: enable the bundled plugin, and pick it as the web-search provider. Then **restart the gateway** so it loads the plugin:
+Since OpenClaw 2026.8, DuckDuckGo search ships as a separate plugin. Install the release that matches the agent's OpenClaw version (2026.8.2 — newer plugin releases require a newer OpenClaw) from the npm registry, which your policy already allows for `node`. `--accept-capabilities` is the explicit consent OpenClaw asks for before a plugin may make network calls on the agent's behalf. Then pick it as the web-search provider and **restart the gateway** so it loads the plugin:
 
 ```bash
-openshell sandbox exec -n shifty -- sh -c 'openclaw config set plugins.entries.duckduckgo.enabled true; openclaw config set tools.web.search.provider duckduckgo; openclaw config get tools.web.search'
+openshell sandbox exec -n shifty -- sh -c 'openclaw plugins install @openclaw/duckduckgo-plugin@2026.8.2 --accept-capabilities; openclaw config set tools.web.search.provider duckduckgo; openclaw config get tools.web.search'
 ```
 
 <Callout type="note" title="One line, on purpose">
 Keep that as a <strong>single line</strong> (commands joined with <code>;</code>). <code>openshell sandbox exec -- sh -c '…'</code> rejects a quoted argument that contains literal newlines, so a multi-line block fails with <em>"command argument contains newline"</em>.
 </Callout>
 
-You'll see `Updated … Restart the gateway to apply.` and the provider read back as `duckduckgo`. Restart (same command as before):
+You'll see `Installed plugin: duckduckgo`, then the provider read back as `duckduckgo`. Without the consent flag the gateway refuses to start (*"plugin verification failed … requires capability consent"*). Restart (same command as before):
 
 ```bash
 openshell sandbox exec -n shifty -- sh -c \
-  'cd /sandbox && [ -f gateway.pid ] && kill "$(cat gateway.pid)" 2>/dev/null; sleep 2; setsid nohup openclaw gateway run --port 30789 --bind lan --auth password --password openshell-wad26 --allow-unconfigured >/sandbox/gateway.log 2>&1 < /dev/null & echo $! > gateway.pid; sleep 8; grep -E "listening on ws" /sandbox/gateway.log | tail -1'
+  'cd /sandbox && pkill -f "^openclaw-gateway"; sleep 2; pkill -9 -f "^openclaw-gateway"; setsid nohup openclaw gateway run --port 30789 --bind lan --auth password --password '"${OPENCLAW_GATEWAY_PASSWORD:-openclaw}"' --allow-unconfigured >/sandbox/gateway.log 2>&1 < /dev/null & echo $! > gateway.pid; for i in $(seq 1 15); do grep -qE "\[gateway\] ready|listening on ws" /sandbox/gateway.log && break; sleep 2; done; grep -E "\[gateway\] ready|listening on ws" /sandbox/gateway.log | tail -1'
 ```
 
 ## 3. Make it search
 
-Ask the agent something it can only answer by looking it up. We run one embedded turn:
+Ask the agent something it can only answer by looking it up — and name the tool, which makes a small model use it reliably. We run one turn through its gateway:
 
 ```bash
-openshell sandbox exec -n shifty -- sh -c 'cd /sandbox && openclaw agent --local --agent main -m "Use web search to find the official OpenShift documentation site and reply with just the domain." --session-id wsdemo'
+openshell sandbox exec -n shifty -- sh -c 'cd /sandbox && openclaw agent --agent main -m "Use your web_search tool to search for: OpenShift documentation. Reply with just the domain of the official documentation site." --session-id wsdemo'
 ```
 
-It comes back with **`docs.openshift.com`** — fetched live from DuckDuckGo, through the policy, by your sealed agent. Try it in the **Control UI** too: ask *"what's new in OpenShift 4.20?"* and watch it search.
+It comes back with the official docs domain (today **`docs.redhat.com`**) — fetched live from DuckDuckGo, through the policy, by your sealed agent. Check the egress in `openshell logs shifty`: the DuckDuckGo requests are there, allowed by the `websearch` rule. Try it in the **Control UI** too: ask *"what's new in OpenShift 4.20?"* and watch it search.
 
 <Callout type="note" title="Free, but still governed">
 DuckDuckGo needs no key, which is why it's the friendly default. But notice the agent didn't get "the internet" — it got <strong>three hosts</strong>. If you swapped in a provider that hit <code>api.bing.com</code>, the call would be <em>denied</em> until you added that host to the policy. The search tool is only ever as reachable as your egress rules allow.

@@ -83,8 +83,10 @@ export function Terminal({ title = "lab shell", fill = false }: { title?: string
         ws.onopen = () => {
           clearTimeout(watchdog);
           setStatus("live");
+          // Bracketed paste: the shell reads the whole block before running it. Sent line by line,
+          // a command that reads stdin (`openshell sandbox exec …`) would swallow the next lines.
           registerShellSender((text) => {
-            if (ws!.readyState === 1) ws!.send(text.replace(/\n/g, "\r") + "\r");
+            if (ws!.readyState === 1) ws!.send("\x1b[200~" + text.replace(/\r?\n/g, "\n") + "\x1b[201~\r");
           });
           const sendResize = () => { try { ws!.send(`\x00resize:${term!.cols}:${term!.rows}`); } catch {} };
           sendResize();

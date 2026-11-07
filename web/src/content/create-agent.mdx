@@ -10,7 +10,7 @@ Every command you run talks to the gateway. First check it answers:
 openshell status
 ```
 
-You want `Status: Connected` and a version. The endpoint is the gateway's OpenShift Route URL (Part II explains how it's reached). If it's not connected, see [Troubleshooting](/learn/troubleshooting).
+You want `Status: Connected` and a version. The endpoint is the gateway's in-cluster Service (`http://openshell.<namespace>.svc.cluster.local:8080`) — your lab shell runs inside the cluster, so it talks to the gateway directly; the gateway is deliberately **not** published on a public Route. If it's not connected, see [Troubleshooting](/learn/troubleshooting).
 
 ## Step 2 — Look at the policy you'll use
 
@@ -21,22 +21,26 @@ cd ~/nemoclaw-openshift-launchable
 cat policies/openclaw-sandbox.yaml
 ```
 
-Two parts matter. First, the **filesystem/process** block — what the agent may touch on disk and run. Second, `network_policies`: a **map of named rules**, each saying *which binary* may reach *which host*. There are two rules: `openclaw` (the ClawHub plugin registry + npm, for installing skills) and `websearch` (DuckDuckGo). Each grants `:443` to `node`/`npm` only. That's the whole grant — everything not listed is denied.
+Two parts matter. First, the **filesystem/process** block — what the agent may touch on disk and run. Second, `network_policies`: a **map of named rules**, each saying *which binary* may reach *which host*. There are three rules: `in-cluster-registry` (the workshop's private npm registry, for skills), `npm-registry` (public npm, for plugin dependencies) and `websearch` (DuckDuckGo). Each grants its hosts to `node`/`npm` only. That's the whole grant — everything not listed is denied.
 
 ```yaml
 network_policies:
-  openclaw:
+  in-cluster-registry:
     endpoints:
-      - { host: clawhub.ai, port: 443, access: full }      # ClawHub registry alias
-      - { host: hub.openclaw.ai, port: 443, access: full }  # …its package CDN
-      - { host: registry.npmjs.org, port: 443, access: full }
-    binaries:
-      - { path: /usr/bin/node }
-      - { path: /usr/local/bin/node }
+      - { host: registry.openshell.svc.cluster.local, port: 4873, access: full, protocol: rest, allow_encoded_slash: true }
+    binaries: [ { path: /usr/bin/node }, { path: /usr/local/bin/node }, { path: /usr/bin/npm }, { path: /usr/local/bin/npm } ]
+  websearch:
+    endpoints:
+      - { host: duckduckgo.com, port: 443, access: full }
+      - { host: html.duckduckgo.com, port: 443, access: full }
+      - { host: lite.duckduckgo.com, port: 443, access: full }
+    binaries: [ { path: /usr/bin/node }, { path: /usr/local/bin/node } ]
 ```
 
+(In a shared lab the registry host carries *your* namespace — <code>registry.<Ns which="openshell" />.svc.cluster.local</code> — the workshop rewrites it at startup. The OpenShell proxy only matches fully-qualified names, so it's always the full `…svc.cluster.local` form.)
+
 <Callout type="note" title="Where's the inference host?">
-Notice there's <strong>no rule for your inference endpoint</strong>. You don't need one: in the previous lesson you set the gateway's inference route, and the agent reaches the model at <code>https://inference.local</code> — a virtual host the supervisor intercepts <em>before</em> this policy is evaluated. The gateway makes the real upstream call (with your key). So the model just works, the real host never appears in the policy, and the agent never holds the key.
+Notice there's <strong>no rule for your inference endpoint</strong>. You don't need one: you'll <em>attach the provider</em> you created in the previous lesson (<code>--provider</code>). Its profile composes the inference rule into the sandbox's <em>effective</em> policy — your inference host, <code>node</code>/<code>curl</code> only, with the credential injected on the way out. This file stays about the agent's own tools; you'll see the composed rule with <code>openshell policy get shifty --full</code>.
 </Callout>
 
 This policy needs no editing — use it as-is.
@@ -46,19 +50,27 @@ This policy needs no editing — use it as-is.
 One command creates the agent. Let's read each flag, then run it:
 
 - `--name shifty` — what we'll call it.
-- `--no-tty` — run non-interactively (skip the per-provider prompt) and don't attach a terminal.
-- `--policy policies/openclaw-sandbox.yaml` — the egress grant from Step 2.
-- `--from ghcr.io/ansjindal/openclaw-sandbox:2026.6.10` — the image: the OpenClaw community sandbox base, pinned to OpenClaw **2026.6.10**. It ships the `openclaw` agent (with the bundled DuckDuckGo plugin) **and** `iproute2` (the supervisor needs it to build the network seal).
-- `-- true` — the **initial command**. It runs once and exits immediately, so `create` **returns right away** instead of blocking. The supervisor still **keeps the pod alive**, so the box stays up and idle — we'll start OpenClaw inside it ourselves in the next lesson. (If you instead pass a long-running command like `sleep infinity`, `create` stays attached and blocks your shell — so we don't.)
+- `--from "$OPENCLAW_SANDBOX_IMAGE"` — the image: the OpenClaw community sandbox base (`ghcr.io/ansjindal/openclaw-sandbox:2026.8.2`, OpenClaw **2026.8.2**). It ships the `openclaw` agent, `node` and `curl` (DuckDuckGo search is a separate plugin you add in *Give It Web Search*).
+- `--policy …/openclaw-sandbox.yaml` — the egress grant from Step 2. **Always pass a policy**: a sandbox created without one never becomes Ready (its supervisor keeps asking the gateway for a policy that isn't there).
+- `--provider "$NEMOCLAW_INFERENCE_PROVIDER"` — attach the inference provider from the previous lesson. Inside the sandbox, `$OPENAI_API_KEY` will be a **placeholder**, never your key.
+- `--no-tty` — run non-interactively and don't attach a terminal.
+- `--detach -- sleep infinity` — the sandbox's **main process**. `sleep infinity` keeps the box up and idle (a command that exits, like `true`, would leave the sandbox *Completed*), and `--detach` makes `create` return as soon as it's running instead of attaching your shell to it. We'll start OpenClaw inside it ourselves in the next lesson.
 
 ```bash
-openshell sandbox create --name shifty --no-tty \
-  --policy policies/openclaw-sandbox.yaml \
-  --from ghcr.io/ansjindal/openclaw-sandbox:2026.6.10 \
-  -- true
+openshell sandbox create --name shifty \
+  --from "$OPENCLAW_SANDBOX_IMAGE" \
+  --policy ~/nemoclaw-openshift-launchable/policies/openclaw-sandbox.yaml \
+  --provider "$NEMOCLAW_INFERENCE_PROVIDER" \
+  --no-tty --detach -- sleep infinity
 ```
 
-The gateway allocates a pod, sideloads its **supervisor** (the per-pod component that seals the network and mints the sandbox's identity), and applies your policy.
+The gateway writes a `Sandbox` resource, the agent-sandbox controller turns it into a pod, and the gateway starts a **supervisor** for it (the component that seals the network, enforces your policy, and swaps credential placeholders on egress).
+
+Check that the provider is attached:
+
+```bash
+openshell sandbox provider list shifty
+```
 
 ## Step 4 — Wait until it's ready
 
@@ -83,7 +95,7 @@ openshell sandbox exec -n shifty -- openclaw --version
 ```
 
 <Callout type="note" title="It's a pod, in the same namespace as the gateway">
-<code>oc -n openshell get pod shifty</code> shows it as a normal pod — in the <strong>openshell</strong> namespace, right alongside the gateway (sandboxes are <em>not</em> in a separate namespace). But the agent runs in a <strong>private network namespace</strong> reachable only through the supervisor — that's the seal you'll explore in <a href="/learn/into-the-sandbox">Into a Sandbox</a>.
+<code>oc -n "$OPENSHELL_NS" get pod default--shifty</code> shows it as a normal pod (named <code>default--shifty</code>: the gateway prefixes the workspace, <code>default</code>) — in your <strong><Ns which="openshell" /></strong> namespace, right alongside the gateway (sandboxes are <em>not</em> in a separate namespace). Next to it you'll also see an <code>os-supervisor-…</code> pod: the supervisor the gateway runs for this sandbox. But the agent runs in a <strong>private network namespace</strong> reachable only through the supervisor — that's the seal you'll explore in <a href="/learn/into-the-sandbox">Into a Sandbox</a>.
 </Callout>
 
 <Callout type="rh" title="What you just did">

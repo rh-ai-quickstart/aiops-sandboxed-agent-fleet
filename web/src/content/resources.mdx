@@ -4,14 +4,14 @@ Where to go deeper, and the key links.
 
 Three live tools sit in the header:
 
-- **Live** → [Live OpenShell](/learn/live). Reads your gateway straight from the cluster: gateway health + version, the **sandbox fleet**, the **inference route** (active provider + model, key names only), and — click any sandbox — its **Logs / audit**, **Policy decisions** (every egress attempt the policy *allowed* or *denied*, color-coded with the host, binary, rule, engine, and denial reason), and effective **Policy** (full YAML). Auto-refreshes; served read-only via `/api/openshell`.
+- **Live** → [Live OpenShell](/learn/live). Reads your gateway straight from the cluster: gateway health + version, the **sandbox fleet**, the registered **providers** (inference credentials — key names only, never values), and — click any sandbox — its **Logs / audit**, **Policy decisions** (every egress attempt the policy *allowed* or *denied*, color-coded with the host, binary, rule, engine, and denial reason), and effective **Policy** (full YAML). Auto-refreshes; served read-only via `/api/openshell`.
 - **Approvals** → [/approvals](/approvals). Two human-in-the-loop inboxes, with a live pending-count badge:
   - **Access requests** — when the agent is denied reaching an API/website, the gateway proposes an allow-rule; **Approve** merges it into the agent's *live* egress policy, **Deny** rejects it (the gateway draft-policy RPCs).
   - **Device approvals** — browsers/CLIs asking to pair with the agent's Control UI; approve or deny each.
 - **Links** — opens your cluster services in a new tab:
   - **OpenClaw UI** — your agent's Control UI (chat + device pairing), at its OpenShift Route.
   - **Grafana** — the observability dashboards (same-origin `/grafana`).
-  - **OpenShift console** — the cluster web console, at its Route URL.
+  - **OpenShift console** — the cluster web console, at its Route URL (hidden in a shared lab without console logins).
 
 ## The stack
 - **Red Hat OpenShift** — docs.openshift.com
@@ -24,10 +24,10 @@ Three live tools sit in the header:
 - OpenClaw skills, tools, device pairing, and the workspace-as-memory pattern (IDENTITY/SOUL).
 - Model Context Protocol (MCP) for typed agent tools.
 - Threat modeling for autonomous agents: prompt injection, credential exposure, egress control, human approval, audit logs.
-- Production hardening: OIDC, per-team RBAC, external secret management, GitOps, SIEM export, supported OpenShift.
+- Production hardening: mTLS/OIDC on the gateway, per-team RBAC, external secret management, GitOps, SIEM export, supported OpenShift.
 
-## The launchable repo
-Everything you deployed is scripted in the launchable repo — `scripts/` (the phases), `manifests/` (OpenShell, OpenClaw, console), `helm/`, and this site under `web/`. Read it, fork it, build your hackathon project on top.
+## The workshop repo
+Everything you deployed is scripted in the workshop repo — `chart/` (the Helm umbrella chart: OpenShell gateway, this workshop, Grafana), `scripts/` (`deploy.sh` for one instance, `lab.sh` for a multi-user lab, `fleet.sh` for the agent fleet), `manifests/` (OpenClaw seeds, fleet roles, the demo app), `policies/`, and this site under `web/`. In your lab shell it's at `~/nemoclaw-openshift-launchable`. Read it, fork it, build your hackathon project on top.
 
 <Callout type="rh" title="Thanks for joining us">
 Built by <strong>Red Hat</strong> and <strong>Nvidia</strong>. Now go give your lobster a superpower. 🦞

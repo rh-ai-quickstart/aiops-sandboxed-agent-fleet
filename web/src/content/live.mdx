@@ -4,7 +4,8 @@ This page reads your **live gateway** — the same fleet `openshell sandbox list
 
 ## What you're looking at
 
-- **OpenShell gateway** — green/Connected means the control plane is up (and its version). This is the gateway at the OpenShell Route URL.
+- **OpenShell gateway** — green/Connected means the control plane is up (and its version). This is the gateway Service in your namespace (<code><Ns which="openshell" /></code>).
+- **Inference provider** — the providers registered on the gateway (key *names* only, never values) and whether your agent sandbox (`shifty`) has one attached.
 - **Sandboxes** — every agent the gateway is managing, by name, with its phase, readiness, restart count, and age. Your `shifty` agent shows up here once you've built it; create more in Part VI and they appear too.
 - **Click any sandbox** to open its detail: a live **Logs / audit** feed (`openshell logs <name>`, filterable by `gateway` / `sandbox` source — this is where egress allow/deny decisions and the JWT handshake show up) and its **full Policy** YAML (`openshell policy get <name> --full` — filesystem, process, and the per-binary network rules). The same pieces the OpenShell console surfaces, stitched into this page.
 
@@ -13,11 +14,11 @@ This page reads your **live gateway** — the same fleet `openshell sandbox list
 The workshop server runs in the cluster, so it reads the cluster directly — no extra component, no OpenShell UI to deploy:
 
 ```bash
-oc -n openshell get sandboxes.agents.x-k8s.io -o json
+oc -n "$OPENSHELL_NS" get sandboxes.agents.x-k8s.io -o json
 ```
 
 The page calls a tiny read-only API route (`/api/openshell`) that runs exactly that (plus the gateway's StatefulSet for health) and returns trimmed JSON. Because the gateway speaks gRPC and the sandboxes are plain Kubernetes objects, *any* surface can render the fleet — the `openshell` CLI, the companion `openshell-ui` console, or a panel like this one stitched into your own tooling.
 
 <Callout type="tip" title="Make it yours">
-This panel is ~120 lines (a React component + one API route). Point it at richer queries — per-sandbox <code>openshell policy get</code>, the audit log, live egress — to build the operator view your fleet needs.
+This panel is ~400 lines (a React component + one API route). Point it at richer queries — per-sandbox <code>openshell policy get</code>, the audit log, live egress — to build the operator view your fleet needs.
 </Callout>

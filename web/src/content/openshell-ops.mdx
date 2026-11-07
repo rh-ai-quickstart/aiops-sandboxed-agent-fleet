@@ -5,13 +5,13 @@ Before you run agent commands, understand the layer that *manages* the agent: **
 OpenShell runs as a StatefulSet. Look at it:
 
 ```bash
-oc -n openshell get statefulset,pods,svc
+oc -n "$OPENSHELL_NS" get statefulset,pods,svc
 ```
 
 Its **Kubernetes compute driver** continuously watches for sandboxes. A healthy gateway logs it every minute:
 
 ```bash
-oc -n openshell logs openshell-0 | grep -i "Listing sandboxes" | tail -3
+oc -n "$OPENSHELL_NS" logs openshell-0 | grep -i "Listing sandboxes" | tail -3
 ```
 
 `Listing sandboxes from Kubernetes` = the control plane is alive and watching.
@@ -26,13 +26,13 @@ oc get crd sandboxes.agents.x-k8s.io
 
 ### List sandboxes
 
-This is the command you asked about — list every sandbox across the cluster:
+List the sandboxes in your namespace (the gateway creates them right next to itself):
 
 ```bash
-oc get sandboxes -A
+oc get sandboxes -n "$OPENSHELL_NS"
 ```
 
-If you haven't created an agent yet it's **empty** — you build your first in Part IV (an agent like `shifty` only shows here once it exists). The point is the *shape*: every agent the gateway makes shows up here as a `Sandbox` CR you can inspect with plain `oc` (`oc -n openshell describe sandbox <name>`). That's the whole API surface — a Kubernetes object.
+If you haven't created an agent yet it's **empty** — you build your first in Part IV (an agent like `shifty` only shows here once it exists, as `default--shifty`: the gateway prefixes the workspace name). The point is the *shape*: every agent the gateway makes shows up here as a `Sandbox` CR (`agents.x-k8s.io/v1beta1`) you can inspect with plain `oc` (`oc -n "$OPENSHELL_NS" describe sandbox default--<name>`). That's the whole API surface — a Kubernetes object.
 
 ## Policies — what a gateway sandbox may do
 
@@ -64,7 +64,7 @@ version: 1
 filesystem_policy:                       # what the agent may touch on disk
   include_workdir: true
   read_only:  [/usr, /lib, /proc, /dev/urandom, /app, /etc, /var/log]
-  read_write: [/sandbox, /tmp, /dev/null]
+  read_write: [/sandbox, /tmp, /var/tmp, /dev/null]
 
 landlock:
   compatibility: best_effort             # enforce the FS rules via the kernel (Landlock LSM)
@@ -74,55 +74,68 @@ process:
   run_as_group: sandbox
 
 network_policies:                        # a MAP of named egress rules — deny-by-default
-  openclaw:                              # OpenClaw's own hosts (registry, API, docs)
-    name: openclaw
+  in-cluster-registry:                   # the workshop's private npm registry (skills)
+    name: in-cluster-registry
     endpoints:
-      - { host: api.openclaw.ai, port: 443 }
-      - { host: registry.npmjs.org, port: 443 }
+      - { host: registry.openshell.svc.cluster.local, port: 4873, access: full, protocol: rest, allow_encoded_slash: true }
     binaries:
       - { path: /usr/bin/node }          # ONLY node/npm may use this rule
+      - { path: /usr/local/bin/node }
       - { path: /usr/bin/npm }
+      - { path: /usr/local/bin/npm }
+  npm-registry:                          # public npm, for plugin dependencies
+    name: npm-registry
+    endpoints:
+      - { host: registry.npmjs.org, port: 443, access: full, protocol: rest, allow_encoded_slash: true }
+    binaries: [ { path: /usr/bin/node }, { path: /usr/local/bin/node }, { path: /usr/bin/npm }, { path: /usr/local/bin/npm } ]
+  websearch:                             # DuckDuckGo, for the web-search tool
+    name: websearch
+    endpoints:
+      - { host: duckduckgo.com, port: 443, access: full }
+      - { host: html.duckduckgo.com, port: 443, access: full }
+      - { host: lite.duckduckgo.com, port: 443, access: full }
+    binaries: [ { path: /usr/bin/node }, { path: /usr/local/bin/node } ]
 ```
 
 Now read it block by block:
 
 - **`version`** — the policy schema version. Just `1`.
-- **`filesystem_policy`** — the agent's view of the disk. `read_only` covers the system dirs (so it can't tamper with binaries or configs); `read_write` is **only** its home (`/sandbox`), `/tmp`, and `/dev/null`. Anything not listed — `/workspace`, the host filesystem — simply isn't there for the agent.
+- **`filesystem_policy`** — the agent's view of the disk. `read_only` covers the system dirs (so it can't tamper with binaries or configs); `read_write` is **only** its home (`/sandbox`), `/tmp`, `/var/tmp`, and `/dev/null`. Anything not listed — `/workspace`, the host filesystem — simply isn't there for the agent.
 - **`landlock`** — those filesystem rules aren't advisory. They're enforced by **Landlock**, a Linux-kernel security module, so even a compromised agent can't step outside them.
 - **`process`** — the agent runs as the unprivileged `sandbox` user, never root (backed by seccomp-BPF + privilege drop).
-- **`network_policies`** — the heart of it: a **map** of named rules, deny-by-default. Each rule pairs **endpoints** (the host + port the agent may reach) with **binaries** (which executables may use that egress). Here there's just one — `openclaw` — letting `node`/`npm` reach OpenClaw's API + the package registries (so the agent can fetch skills/packages), and nothing else.
+- **`network_policies`** — the heart of it: a **map** of named rules, deny-by-default. Each rule pairs **endpoints** (the host + port the agent may reach) with **binaries** (which executables may use that egress). Here there are three — the in-cluster skill registry, public npm, and DuckDuckGo — all for `node`/`npm` only, and nothing else. (In a shared lab the registry host carries your own namespace, <code>registry.<Ns which="openshell" />.svc.cluster.local</code>; the workshop rewrites it at startup.)
 
-Read it as one sentence: *"`/usr/bin/node` may open `:443` to `api.openclaw.ai` — `curl` may not, and nobody may reach anywhere else."* That **per-binary, per-host** egress is what stops a prompt-injected agent from exfiltrating data through an unexpected channel — a deny-all firewall with tiny labelled doors.
+Read it as one sentence: *"`node` may open `:443` to `duckduckgo.com` — `curl` may not, and nobody may reach anywhere else."* That **per-binary, per-host** egress is what stops a prompt-injected agent from exfiltrating data through an unexpected channel — a deny-all firewall with tiny labelled doors.
 
 <Callout type="note" title="Where's the model endpoint?">
-Notice the policy has <strong>no rule for inference</strong>. The agent reaches its model at the virtual host <code>https://inference.local</code>, which the supervisor intercepts <em>before</em> policy is evaluated and routes to the gateway (next section). So the real inference host never appears here — and a direct call to it is denied like anything else (<code>CONNECT tunnel failed, response 403</code>). The model works; the endpoint is invisible to the agent.
+Notice the policy has <strong>no rule for inference</strong>. That access comes from a <em>provider</em> attached to the sandbox (last section below): its profile adds the inference endpoint to the sandbox's <em>effective</em> policy — for the listed binaries only — and brokers the key. Without the provider attached, a call to the inference host is denied like anything else.
 </Callout>
 
-You'll see this exact policy **enforced live** in the next lesson (on a throwaway sandbox) and again when you build your agent in Part IV — `openshell policy get <name>` prints the *effective* policy. The gateway compiles this file into kernel-level (Landlock/seccomp) and proxy-level (OPA egress) rules.
+You'll see this exact policy **enforced live** in the next lesson (on a throwaway sandbox) and again when you build your agent in Part IV — `openshell policy get <name>` prints the *effective* policy (add `--full` to include provider-composed rules). The gateway compiles this file into kernel-level (Landlock/seccomp) and proxy-level (OPA egress) rules.
 
 <Callout type="tip" title="The iterate loop">
 For a gateway-created sandbox, start in <strong>audit</strong> mode (violations logged, not blocked), watch <code>openshell logs &lt;name&gt;</code> for denials, add the endpoints you actually need to <code>network_policies</code>, then flip to <strong>enforce</strong>. Tighten without downtime — network rules hot-reload.
 </Callout>
 
 <Callout type="note" title="Who reconciles the sandbox?">
-The agent-sandbox <strong>controller</strong> (installed with OpenShell in phase 30) turns the <code>Sandbox</code> CR into a real pod, under the namespace's RBAC + Security Context Constraints. OpenShell is the broader control plane / supervisor for sandboxes.
+The agent-sandbox <strong>controller</strong> (kubernetes-sigs/agent-sandbox v1.0.3, installed once per cluster) turns the <code>Sandbox</code> CR into a real pod, under the namespace's RBAC + Security Context Constraints — sandboxes run under the default <code>restricted-v2</code> SCC, no privileged grant. OpenShell is the broader control plane: the gateway, plus a <strong>supervisor</strong> per sandbox (you'll see an <code>os-supervisor-…</code> pod next to each one).
 </Callout>
 
-## Inference routing — the privacy router
+## Credentials — providers and placeholders
 
-The gateway is also where inference is configured, as two control-plane objects you'll use in Part IV:
+The gateway is also where secrets live, as two control-plane objects you'll use in Part IV:
 
-- A **provider** — a named bundle the gateway stores: an API type (`openai`, `anthropic`, …), the **endpoint** (config), and the **key** (a credential). The key lives here, gateway-side — never in a sandbox.
-- The **inference route** — the gateway saying "use *this provider* + *this model* for inference." One route is active at a time.
+- A **provider profile** — the access contract for a kind of credential: which **host + port** it may be sent to, how (e.g. `Authorization: Bearer`), the env var that carries it in the sandbox (`OPENAI_API_KEY`), and which **binaries** may send it. No secret inside.
+- A **provider** — an instance of a profile holding the actual **credential** (your key), stored gateway-side. You **attach** it to sandboxes.
 
 ```bash-ref
-openshell provider create --name default --type openai \
-  --credential OPENAI_API_KEY=…  --config OPENAI_BASE_URL=…   # key held by the gateway
-openshell inference set --provider default --model …          # bind it as the active route
-openshell inference get                                       # confirm
-openshell provider list                                       # never prints key values
+openshell provider profile import -f "$NEMOCLAW_INFERENCE_PROFILE"      # the access contract
+OPENAI_API_KEY=… openshell provider create --name default \
+  --type maas-openai --credential OPENAI_API_KEY                          # key held by the gateway
+openshell sandbox create … --provider default                            # attach at creation
+openshell provider list                                                  # never prints key values
 ```
 
-These are shown for reference — you'll actually run them in **Part IV**, not here. An agent then sends its thinking to **`https://inference.local`**. The supervisor intercepts that virtual host *before* the egress policy runs and hands it to the gateway, which injects the real key and calls the provider upstream. Two consequences, both good: the agent **never holds your key**, and your real inference host **never needs a `network_policies` entry** (which is why the policy above has none). That's the OpenShell privacy router — you'll set it up, then watch a sandbox use it, in Part IV.
+These are shown for reference — you'll actually run them in **Part IV**, not here. Inside an attached sandbox, `$OPENAI_API_KEY` holds only a **placeholder** (`openshell:resolve:env:…`). The agent calls your real endpoint with it; the supervisor's egress proxy sees the placeholder and swaps in the real key — only toward the profile's host, only from its binaries. Two consequences, both good: the agent **never holds your key**, and a stolen placeholder is worthless anywhere else.
 
-Next: spin up a throwaway sandbox and drive every part of this — status, logs, policy, inference, forward — hands-on.
+Next: spin up a throwaway sandbox and drive every part of this — status, logs, policy, providers, forward — hands-on.

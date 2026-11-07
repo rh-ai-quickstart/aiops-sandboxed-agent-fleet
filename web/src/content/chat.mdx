@@ -6,7 +6,7 @@ In the OpenClaw Control UI (the tab from *Open the Agent UI*), use the chat box:
 
 > Hi! Who are you, and what cluster are you running on?
 
-It answers from its **identity** (the workspace `.md` files — you'll edit those in *Identity & Soul*) using the model you configured. Every reply is a round-trip to `inference.local` — through the sandbox's egress proxy and the gateway's inference router to your model, with the key injected gateway-side.
+It answers from its **identity** (the workspace `.md` files — you'll edit those in *Identity & Soul*) using the model you configured. Every reply is a round-trip to your inference endpoint — out through the sandbox's egress proxy, where the supervisor swaps the placeholder `OPENAI_API_KEY` for your real key on the way to the one host the provider allows.
 
 ## Watch it work from the shell
 
@@ -19,7 +19,7 @@ openshell sandbox exec -n shifty -- sh -c 'tail -n 20 /sandbox/gateway.log'
 And confirm what the agent is allowed to reach — the deny-by-default policy in force:
 
 ```bash
-openshell policy get shifty
+openshell policy get shifty --full
 ```
 
 Everything it can touch on the network is right there. Ask it to fetch a random website and it simply can't — the egress isn't in the policy. That's the guarantee: the agent does what you want, and *only* what you allowed.
@@ -28,7 +28,13 @@ Everything it can touch on the network is right there. Ask it to fetch a random 
 
 Give it something to actually do (it has a shell + tools inside its sandbox):
 
-> Write a haiku about Kubernetes to /sandbox/haiku.txt, then read it back to me.
+> Use your write tool to create the file /sandbox/haiku.txt containing a haiku about Kubernetes. Then use your read tool to read /sandbox/haiku.txt back to me.
+
+Prefer the terminal? Send the same task through the agent's gateway:
+
+```bash
+openshell sandbox exec -n shifty -- sh -c 'cd /sandbox && openclaw agent --agent main --session-id haiku -m "Use your write tool to create the file /sandbox/haiku.txt containing a haiku about Kubernetes. Then use your read tool to read /sandbox/haiku.txt back to me."'
+```
 
 Then verify from outside that it really wrote the file in its sealed home:
 
@@ -36,10 +42,12 @@ Then verify from outside that it really wrote the file in its sealed home:
 openshell sandbox exec -n shifty -- cat /sandbox/haiku.txt
 ```
 
+If `cat` says *No such file*, the model answered in chat without calling its write tool — small models occasionally do. Send the task again; naming the tool ("use your write tool") is what makes it reliable.
+
 The agent acted inside its sandbox; you observed it from the control plane. That separation — agent in a sealed box, you holding the keys — is the whole point.
 
 <Callout type="tip" title="If a reply stalls">
-Check the model config and that egress is allowed: <code>openshell sandbox exec -n shifty -- openclaw config get</code> and <code>openshell logs shifty --tail</code>. A blocked request shows as a denied egress in the audit log — that's the policy doing its job, not a bug.
+Check the model config and that egress is allowed: <code>openshell sandbox exec -n shifty -- openclaw config get models.providers.custom</code> and <code>openshell logs shifty --tail</code>. A blocked request shows as a denied egress in the audit log — that's the policy doing its job, not a bug.
 </Callout>
 
 <Callout type="rh" title="You have a working agent">

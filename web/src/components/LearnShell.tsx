@@ -1,20 +1,14 @@
 "use client";
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { BookOpen, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Sidebar } from "./Sidebar";
+import { useStoredString } from "@/lib/clientStore";
 
-// Full-width learn shell with a collapsible lesson sidebar.
+// Full-width learn shell with a collapsible lesson sidebar (open/closed is remembered).
 export function LearnShell({ children }: { children: ReactNode }) {
-  const [open, setOpen] = useState(true);
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem("oclaw:lesson-sidebar-open");
-    if (saved === "false") setOpen(false);
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem("oclaw:lesson-sidebar-open", String(open));
-  }, [open]);
+  const [saved, setSaved] = useStoredString("oclaw:lesson-sidebar-open", "true");
+  const open = saved !== "false";
+  const setOpen = (v: boolean) => setSaved(String(v));
 
   return (
     <div className="relative flex w-full">

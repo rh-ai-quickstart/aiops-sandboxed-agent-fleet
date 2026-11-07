@@ -10,6 +10,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  HELM_VERSION: v3.22.1
+
 jobs:
   web-build:
     name: Web build (TS + MDX)
@@ -18,10 +21,10 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
@@ -31,57 +34,108 @@ jobs:
     name: Shell scripts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: >-
-          shellcheck --severity=error --external-sources
-          scripts/deploy.sh
-          scripts/00-preflight.sh
-          scripts/15-observability.sh
-          scripts/45-openclaw.sh
-          scripts/fleet.sh
-          scripts/lib/common.sh
-          scripts/lib/operator-manager.sh
-          scripts/lib/enable-uwm.sh
+      - uses: actions/checkout@v7
+      - name: shellcheck (all scripts, warning severity)
+        run: |
+          shopt -s nullglob
+          shellcheck --version
+          shellcheck --severity=warning --external-sources --source-path=SCRIPTDIR \
+            scripts/*.sh scripts/lib/*.sh
+      - name: bash -n
+        run: for f in scripts/*.sh scripts/lib/*.sh; do bash -n "$f"; done
+      - name: lab.sh / lab-smoke.sh help (no cluster needed)
+        run: |
+          bash scripts/lab.sh --help >/dev/null
+          bash scripts/lab-smoke.sh --help >/dev/null
 
   yaml-syntax:
-    name: YAML syntax
+    name: YAML syntax + kustomize
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: |
           python3 - <<'PY'
-          import sys, glob, yaml
-          files = sorted(set(
+          import sys, glob, json, yaml
+          # Helm templates ({{ }}) are not plain YAML: they are validated by the helm job.
+          files = sorted(f for f in set(
               glob.glob("manifests/**/*.yaml", recursive=True)
               + glob.glob("policies/**/*.yaml", recursive=True)
               + glob.glob("deploy/**/*.yaml", recursive=True)
-              + glob.glob("helm/**/*.yaml", recursive=True)
-              + glob.glob("chart/values.yaml")
-              + glob.glob("chart/charts/*/values.yaml")
-          ))
+              + glob.glob("chart/values*.yaml")
+              + glob.glob("chart/charts/*/values*.yaml")
+              + glob.glob(".github/workflows/*.yml")
+          ) if "/templates/" not in f)
           bad = 0
           for f in files:
               try:
                   list(yaml.safe_load_all(open(f)))
               except yaml.YAMLError as e:
                   print(f"✗ {f}: {e}"); bad += 1
+          # policies/openclaw-sandbox.json must stay in sync with the YAML.
+          if json.load(open("policies/openclaw-sandbox.json")) != yaml.safe_load(open("policies/openclaw-sandbox.yaml")):
+              print("✗ policies/openclaw-sandbox.json is out of sync with openclaw-sandbox.yaml"); bad += 1
           if bad:
-              sys.exit(f"{bad} invalid YAML file(s)")
+              sys.exit(f"{bad} problem(s)")
           print(f"✓ {len(files)} YAML files valid")
           PY
+      - name: demo app renders namespace-free
+        run: |
+          kubectl kustomize manifests/demo-app > /tmp/demo.yaml
+          if grep -nE '^\s+namespace:|^kind: Namespace' /tmp/demo.yaml; then
+            echo "✗ manifests/demo-app must stay namespace-agnostic"; exit 1
+          fi
 
-  helm-lint:
-    name: Helm lint
+  helm:
+    name: Helm lint + render (single + lab)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
-      - run: helm lint chart/
-      - run: helm template nemoclaw chart/ --set global.clusterAppsDomain=apps.test.example.com
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Build chart dependencies
+        run: |
+          helm repo add grafana-community https://grafana-community.github.io/helm-charts
+          helm dependency build chart/charts/openshell
+          helm dependency build chart/charts/monitoring
+          helm dependency build chart
+      - name: Lint
+        run: |
+          helm lint chart/ --set openshell.upstream.agentSandbox.preflight.enabled=false
+          helm lint chart/ -f chart/values.yaml -f chart/values-lab.yaml \
+            --set openshell.upstream.agentSandbox.preflight.enabled=false \
+            --set global.demoNamespace=user01-demo --set global.lab.user=user01
+          helm lint chart/charts/monitoring -f chart/charts/monitoring/values.yaml -f chart/charts/monitoring/values-lab.yaml
+          helm lint deploy/lab-shared --set-json 'images=["registry.example.com/a:1"]'
+      - name: Render single mode + two lab attendees, check isolation / collisions
+        run: |
+          # The upstream chart's Agent Sandbox preflight needs a live cluster.
+          common=(--set openshell.upstream.agentSandbox.preflight.enabled=false --set global.clusterAppsDomain=apps.test.example.com)
+          helm template nemoclaw chart/ -n openshell "${common[@]}" > /tmp/single.yaml
+          for u in user01 user02; do
+            helm template nemoclaw chart/ -n "$u-openshell" -f chart/values.yaml -f chart/values-lab.yaml "${common[@]}" \
+              --set global.demoNamespace="$u-demo" --set global.lab.user="$u" > "/tmp/$u.yaml"
+          done
+          python3 .github/scripts/check-render.py /tmp/single.yaml /tmp/user01.yaml /tmp/user02.yaml
+          helm template m chart/charts/monitoring -n monitoring \
+            -f chart/charts/monitoring/values.yaml -f chart/charts/monitoring/values-lab.yaml >/dev/null
+      - name: Lint + render the observability charts
+        run: |
+          for c in deploy/observability/*/; do
+            helm lint "$c"
+            # The Loki chart looks up the default StorageClass, which does not exist offline.
+            helm template obs "$c" --set lokiStack.storageClassName=ci-standard >/dev/null
+          done
 
   docker-build:
-    name: Docker build (workshop image)
+    name: Container build (workshop image, builder stage)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: docker build -f web/Dockerfile --target builder .
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: web/Dockerfile
+          target: builder
+          push: false

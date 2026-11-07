@@ -1,0 +1,50 @@
+# Gateway API entry points for OpenShift AI 3.5 (rendered by scripts/maas.sh with envsubst):
+#  - openshift-ai-inference: prerequisite Gateway for LLMInferenceService (llm-d).
+#  - maas-default-gateway: the Models-as-a-Service endpoint, https://maas.${APPS_DOMAIN}
+#    (TLS secret maas-tls-cert = copy of the cluster's default ingress certificate, made by maas.sh).
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: openshift-default
+spec:
+  controllerName: openshift.io/gateway-controller/v1
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: openshift-ai-inference
+  namespace: openshift-ingress
+spec:
+  gatewayClassName: openshift-default
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: maas-default-gateway
+  namespace: openshift-ingress
+  annotations:
+    opendatahub.io/managed: "false"
+    security.opendatahub.io/authorino-tls-bootstrap: "true"
+spec:
+  gatewayClassName: openshift-default
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: maas.${APPS_DOMAIN}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: maas-tls-cert
+            namespace: openshift-ingress
+      allowedRoutes:
+        namespaces:
+          from: All

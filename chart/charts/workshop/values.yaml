@@ -1,22 +1,88 @@
-image: quay.io/mmurakam/nemoclaw-workshop:v0.2.1
+# Workshop web app (Next.js + terminal bridge) + the openclaw-forward sidecar.
+# Namespaces are derived from .Release.Namespace (gateway, sandboxes, registry, workshop)
+# and .Values.global.demoNamespace (demo app). Defaults reproduce single-instance mode.
+
+image: quay.io/mouachan/nemoclaw-workshop:v0.3.0
+imagePullPolicy: IfNotPresent
 replicas: 1
 
+# Extra pod annotations (lab.sh sets a hash of the inference Secret so a key/model change
+# rolls the workshop pod: envFrom is only read at container start).
+podAnnotations: {}
+
+# Ungated health endpoint served by server.mjs (the access gate never applies to it).
+probePath: /healthz
+
 inference:
+  # Real OpenAI-compatible endpoint + model + key. Ignored when existingSecret is set.
   baseUrl: ""
   model: ""
   apiKey: ""
+  # OpenShell provider name the sandboxes attach (`--provider`).
+  provider: default
+  # Existing Secret (keys NEMOCLAW_INFERENCE_BASE_URL, NEMOCLAW_MODEL, NEMOCLAW_API_KEY),
+  # loaded with envFrom. lab.sh creates `lab-inference` per attendee.
+  existingSecret: ""
+
+access:
+  # Existing Secret with LAB_ACCESS_TOKEN (workshop access gate) and
+  # OPENCLAW_GATEWAY_PASSWORD (OpenClaw UI). lab.sh creates `workshop-access`.
+  # Empty = no gate (single mode) and openclaw.gatewayPassword below.
+  existingSecret: ""
+
+# Sandbox image fleet.sh / 45-openclaw.sh pass to `sandbox create --from` (OPENCLAW_SANDBOX_IMAGE).
+# Empty = their default (the chart's openshell.upstream.sandbox.image). deploy.sh / lab.sh set
+# it together with the gateway default when OPENCLAW_SANDBOX_IMAGE is given.
+sandboxImage: ""
 
 openclaw:
   agentName: shifty
   gatewayPassword: openclaw
 
 openshellGateway:
-  endpointUrl: "http://openshell.openshell.svc.cluster.local:8080"
+  # Empty = http://openshell.<release namespace>.svc.cluster.local:8080
+  endpointUrl: ""
 
 grafana:
-  origin: "http://grafana.monitoring.svc.cluster.local:80"
+  # Empty = http://grafana.<global.monitoringNamespace>.svc.cluster.local:80
+  origin: ""
 
 monitoring:
   promHost: "https://thanos-querier.openshift-monitoring.svc.cluster.local:9091"
+  # Thanos tenancy port: label-enforced `?namespace=` queries, authorized per namespace.
+  promTenancyHost: "https://thanos-querier.openshift-monitoring.svc.cluster.local:9092"
   lokiHost: "https://logging-loki-gateway-http.openshift-logging.svc.cluster.local:8080"
   tempoHost: "https://tempo-tempostack-gateway.observability-hub.svc.cluster.local:8080"
+
+rbac:
+  # pods/exec in the release namespace (the into-the-sandbox lesson). true in single mode;
+  # false in lab mode (exec is a node-escape path on a shared cluster).
+  allowExec: true
+  # Platform namespaces where the workshop SA (= the attendee's terminal identity) may
+  # read pods / services / routes (monitoring + troubleshooting lessons).
+  platformReadNamespaces:
+    - openshift-monitoring
+    - openshift-logging
+    - observability-hub
+    - monitoring
+    - openshift-console
+
+# Per-instance ServiceAccount whose short-lived token the fleet agents use for Thanos /
+# Loki / Tempo. Bound only in this release's two namespaces.
+telemetry:
+  enabled: true
+  serviceAccountName: telemetry-reader
+
+# Per-instance Kubernetes event exporter watching ONLY the demo namespace; its stdout lands
+# in Loki under kubernetes_namespace_name=<release namespace> (the events agent's stream).
+eventExporter:
+  enabled: true
+  image: ghcr.io/resmoio/kubernetes-event-exporter:v1.7
+
+resources:
+  workshop:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits: { memory: 1Gi }
+  forward:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 256Mi }

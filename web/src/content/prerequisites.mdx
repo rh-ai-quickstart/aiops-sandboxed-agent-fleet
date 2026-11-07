@@ -2,17 +2,17 @@ This workshop is deliberately light on prerequisites.
 
 ## You bring
 - A laptop with a modern browser.
-- Access to an **OpenShift cluster** with the Helm chart already deployed (we provide this at the event).
+- Access to an **OpenShift 4.19+ cluster** with the Helm chart already deployed (we provide this at the event).
 - Basic terminal comfort. No Kubernetes experience required.
 
 ## We provide
-At the event we hand out access to a pre-configured OpenShift cluster with the OpenShell gateway already running. No personal cloud account or credit card needed.
+At the event we hand out access to a pre-configured OpenShift cluster with the OpenShell gateway already running — at a multi-user event, a personal workshop link giving you your own gateway, agent namespace and demo namespace on a shared cluster. No personal cloud account or credit card needed.
 
 <Callout type="tip" title="Everything is pre-deployed">
 The cluster, the gateway, and this workshop site are all running. You just need a browser to get started.
 </Callout>
 
 ## You do NOT need
-- A GPU — inference is a remote endpoint.
+- A GPU — the model is served for you (in this lab, NVIDIA Nemotron on the cluster's own GPU through OpenShift AI Models-as-a-Service).
 - A local Kubernetes/OpenShift install — it runs on the cluster.
 - Deep YAML knowledge — the deploy is one Helm chart.

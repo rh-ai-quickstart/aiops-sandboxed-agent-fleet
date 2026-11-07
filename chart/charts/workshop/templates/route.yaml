@@ -1,10 +1,11 @@
+{{- /* Hostnames carry the namespace: workshop-<ns>.<domain>, openclaw-ui-<ns>.<domain>. */ -}}
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: workshop
   namespace: {{ .Release.Namespace }}
   labels:
-    app.kubernetes.io/name: workshop
+    {{- include "workshop.labels" . | nindent 4 }}
   annotations:
     haproxy.router.openshift.io/timeout: 300s
 spec:
@@ -27,7 +28,9 @@ metadata:
   name: openclaw-ui
   namespace: {{ .Release.Namespace }}
   labels:
-    app.kubernetes.io/name: workshop
+    {{- include "workshop.labels" . | nindent 4 }}
+  annotations:
+    haproxy.router.openshift.io/timeout: 300s
 spec:
   {{- if .Values.global.clusterAppsDomain }}
   host: openclaw-ui-{{ .Release.Namespace }}.{{ .Values.global.clusterAppsDomain }}

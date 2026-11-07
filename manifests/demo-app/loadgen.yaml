@@ -1,11 +1,10 @@
 # shop-app (instrumented demo service) + loadgen. The app source lives in shop-app/app.js and is
 # mounted via the `shop-app-src` ConfigMap that kustomization.yaml generates from that file —
-# edit app.js, re-apply with `oc apply -k manifests/demo-app/`, and the hash change rolls it out.
+# edit app.js, re-apply with `oc -n <demo-namespace> apply -k manifests/demo-app/`, and the hash change rolls it out.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: shop-app
-  namespace: demo
   labels: { app: shop-app }
 spec:
   replicas: 1
@@ -21,11 +20,16 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: shop-app
-          image: node:22-alpine
+          image: docker.io/library/node:24-alpine
           command: ["node", "/app/app.js"]
           env:
             - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector-collector.observability-hub.svc.cluster.local:4318" }
             - { name: OTEL_SERVICE_NAME, value: "shop" }
+            # Spans carry k8s.namespace.name so the shared Tempo can be filtered per attendee.
+            - name: K8S_NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
+            - { name: OTEL_RESOURCE_ATTRIBUTES, value: "k8s.namespace.name=$(K8S_NAMESPACE)" }
+            - { name: PAYMENT_URL, value: "http://payments:8080/charge" }
           ports:
             - { name: http, containerPort: 8080 }
           readinessProbe: { httpGet: { path: /healthz, port: 8080 }, initialDelaySeconds: 2, periodSeconds: 5 }
@@ -46,7 +50,6 @@ apiVersion: v1
 kind: Service
 metadata:
   name: shop-app
-  namespace: demo
   labels: { app: shop-app }
 spec:
   selector: { app: shop-app }
@@ -58,7 +61,6 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: shop-app
-  namespace: demo
   labels: { app: shop-app }
 spec:
   selector:
@@ -71,7 +73,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: loadgen
-  namespace: demo
   labels: { app: loadgen }
 spec:
   replicas: 1
@@ -86,12 +87,12 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: loadgen
-          image: curlimages/curl:8.11.1
+          image: docker.io/curlimages/curl:8.23.0
           command: ["/bin/sh", "-c"]
           args:
             - |
               while true; do
-                curl -s -o /dev/null "http://shop-app.demo.svc.cluster.local:8080/checkout?customer=$(( (RANDOM % 4) + 1 ))";
+                curl -s -o /dev/null "http://shop-app:8080/checkout?customer=$(( (RANDOM % 4) + 1 ))";
                 sleep 1;
               done
           securityContext:

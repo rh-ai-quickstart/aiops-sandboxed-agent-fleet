@@ -8,7 +8,10 @@ tool is blocked for it — call the `exec` tool to run the skill's script for ON
 
     node /sandbox/.agents/skills/cluster-telemetry/tq.js '<your Loki URL>'
 
-Query `/api/logs/v1/application/loki/api/v1/query_range` for the affected namespace (e.g. `{kubernetes_namespace_name="demo"}`) over the
-recent window. Surface concrete evidence: the actual log lines and which pods are logging. If a
+Query `/api/logs/v1/application/loki/api/v1/query_range` for the application namespace
+`{{DEMO_NS}}` — the stream selector is `{kubernetes_namespace_name="{{DEMO_NS}}"}` (add
+`|= "error"` to narrow it) — over the recent window. Your credentials only cover your own
+namespaces (`{{DEMO_NS}}`, `{{OPENSHELL_NS}}`); any other namespace answers 403.
+Surface concrete evidence: the actual log lines and which pods are logging. If a
 pod never started, "no application logs — the container didn't run" is itself a finding.
 Report findings, not fixes — and never invent log lines. The writer composes; you supply the log truth.

@@ -1,13 +1,13 @@
 Shifty isn't configured by a settings panel — it's shaped by **Markdown files in its workspace**. These files *are* the agent's memory and personality. Each session it "wakes up," reads them, and acts accordingly. No system-prompt black box — just text you can read and edit.
 
-Let's look at the actual files the launchable seeds into Shifty's workspace.
+Let's look at the actual files this workshop seeds into Shifty's workspace.
 
 ## `IDENTITY.md` — *who* the agent is
 
 The shortest file, and the most fun. Name, creature, vibe, emoji — the agent's sense of self:
 
 ```md
-_Your identity. Pre-set for the WeAreDevelopers 2026 × Red Hat workshop — it's yours to evolve._
+_Your identity. Pre-set for this Red Hat hands-on lab — it's yours to evolve._
 
 Name: Shifty
 Creature: A container-native lobster 🦞 — hatched inside an OpenShift pod, equally at
@@ -81,7 +81,7 @@ Delete this file — you don't need a kickoff script once you're in flow.
 
 ## Seed them into your agent
 
-The agent you built by hand started **blank** — that's why it greeted you with a generic "who are you?" instead of as Shifty. Let's give it the persona now by staging the launchable's seed files (`manifests/openclaw/workspace-seed/`) into its workspace. Run this in the lab shell:
+The agent you built by hand started **blank** — that's why it greeted you with a generic "who are you?" instead of as Shifty. Let's give it the persona now by staging the workshop's seed files (`manifests/openclaw/workspace-seed/`) into its workspace. Run this in the lab shell:
 
 ```bash
 cd ~/nemoclaw-openshift-launchable
@@ -95,7 +95,7 @@ echo "seeded: $(ls manifests/openclaw/workspace-seed/)"
 That writes `IDENTITY.md`, `SOUL.md`, and `BOOTSTRAP.md` into the agent. To pick them up, just **start a new chat session** in the OpenClaw UI — the agent reads its workspace fresh each session, so it wakes up *as* Shifty. (The scripted provisioner does this same seeding for you at creation; on the hands-on path you do it here.)
 
 <Callout type="note" title="No restart or re-forward needed">
-Seeding/editing workspace files doesn't change the gateway process or its config, so you <strong>don't</strong> restart the gateway or re-run <code>openshell forward</code> — a fresh chat session is enough. (You only re-run <code>openshell forward</code> if you <em>delete and recreate</em> the sandbox.)
+Seeding/editing workspace files doesn't change the gateway process or its config, so you <strong>don't</strong> restart the gateway — a fresh chat session is enough. (The workshop's <code>openclaw-forward</code> sidecar keeps the UI forward alive on its own, even if you delete and recreate the sandbox.)
 </Callout>
 
 ## Read them live

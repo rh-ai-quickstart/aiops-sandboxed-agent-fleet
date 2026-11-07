@@ -1,10 +1,10 @@
 #!/bin/bash
-# Enable cluster-level user workload monitoring for OpenShift
-# This script configures the cluster-monitoring-config ConfigMap to enable
-# user workload monitoring, which is required for Intel Gaudi metrics and
-# custom application metrics collection.
+# Enable cluster-level user workload monitoring (UWM) for OpenShift.
+# Sets enableUserWorkload: true in the cluster-monitoring-config ConfigMap, MERGING into
+# any existing config (retention, storage, nodeSelectors... are preserved).
 #
-# Also enables Alertmanager for user workload monitoring to support alerting.
+# Optionally enables Alertmanager for user workload monitoring when
+# UWM_ENABLE_ALERTMANAGER=true (off by default — the workshop does not need it).
 #
 # Prerequisites:
 # - oc CLI logged in to OpenShift cluster with cluster-admin privileges
@@ -42,13 +42,14 @@ main() {
         enable_user_workload || exit 1
     fi
 
-    # Step 4: Enable Alertmanager for user workload monitoring
+    # Step 4: Enable Alertmanager for user workload monitoring (opt-in)
     echo ""
-    echo -e "${BLUE}→ Enabling Alertmanager for user workload monitoring...${NC}"
-    if is_alertmanager_enabled; then
+    if [ "${UWM_ENABLE_ALERTMANAGER:-false}" != "true" ]; then
+        echo -e "${BLUE}→ UWM Alertmanager not requested (UWM_ENABLE_ALERTMANAGER!=true) - skipping${NC}"
+    elif is_alertmanager_enabled; then
         echo -e "${GREEN}  ✅ Alertmanager already enabled - skipping${NC}"
     else
-        echo -e "${BLUE}  → Enabling Alertmanager...${NC}"
+        echo -e "${BLUE}→ Enabling Alertmanager for user workload monitoring...${NC}"
         enable_alertmanager || exit 1
     fi
 
@@ -83,13 +84,30 @@ is_user_workload_enabled() {
     return 1
 }
 
-# Enable user workload monitoring by applying ConfigMap
+# Enable user workload monitoring. Creates the ConfigMap from $CONFIG_FILE when it does not
+# exist; otherwise merges enableUserWorkload: true into the existing config.yaml so other
+# cluster monitoring settings are preserved (a plain `oc apply` would replace them all).
 enable_user_workload() {
-    # Apply the ConfigMap from YAML file
-    oc apply -f "$CONFIG_FILE" || {
-        echo -e "${RED}❌ Failed to apply ConfigMap${NC}"
-        return 1
-    }
+    if ! oc get configmap "$CM_NAME" -n "$CM_NAMESPACE" >/dev/null 2>&1; then
+        oc apply -f "$CONFIG_FILE" || {
+            echo -e "${RED}❌ Failed to apply ConfigMap${NC}"
+            return 1
+        }
+    else
+        local current_config new_config
+        current_config=$(oc get configmap "$CM_NAME" -n "$CM_NAMESPACE" \
+            -o jsonpath='{.data.config\.yaml}' 2>/dev/null)
+        [ -z "$current_config" ] && current_config="{}"
+        new_config=$(echo "$current_config" | yq eval '.enableUserWorkload = true' -) || {
+            echo -e "${RED}❌ Failed to parse existing $CM_NAME config.yaml${NC}"
+            return 1
+        }
+        oc patch configmap "$CM_NAME" -n "$CM_NAMESPACE" --type merge \
+            -p "$(jq -n --arg config "$new_config" '{data: {"config.yaml": $config}}')" || {
+            echo -e "${RED}❌ Failed to patch ConfigMap${NC}"
+            return 1
+        }
+    fi
 
     echo -e "${GREEN}  ✅ ConfigMap updated with enableUserWorkload: true${NC}"
     return 0

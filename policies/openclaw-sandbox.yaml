@@ -7,14 +7,21 @@
 # and ONLY via the listed binaries.
 #
 # NOTE: a gateway sandbox is network-SEALED from the in-cluster Kubernetes API by the
-# supervisor (egress proxy routes to the internet only). That is by design — these
-# agents do governed EXTERNAL work, not in-cluster reads.
+# supervisor (egress proxy, deny-by-default). That is by design — these agents do governed
+# EXTERNAL work, not in-cluster reads.
 #
-# INFERENCE: the agent sends its thinking to https://inference.local — a virtual host the
-# supervisor intercepts BEFORE policy evaluation and routes to the gateway's configured
-# inference provider (`openshell provider create` + `openshell inference set`). The gateway
-# holds the real endpoint + key and makes the upstream call, so the real inference host
-# needs NO entry here and the agent never sees the key. That's the OpenShell privacy router.
+# INFERENCE (OpenShell 0.1.x): the model endpoint is NOT listed here. The sandbox is created
+# with `--provider <name>` (a provider of the `maas-openai` profile, see
+# manifests/openclaw/inference-profile.yaml.tmpl); an attached provider contributes its own
+# `_provider_*` network-policy entry for the profile's endpoint + binaries. Inside the
+# sandbox $OPENAI_API_KEY is only a placeholder: the supervisor proxy swaps in the real key
+# on requests to that endpoint, so the agent never sees the key. OpenClaw's baseUrl is the
+# real endpoint (the 0.0.x `inference.local` router no longer exists).
+#
+# NAMESPACE: the registry host below is the single-instance default
+# (registry.openshell.svc.cluster.local). The OpenShell proxy does not resolve single-label
+# hosts, so fleet.sh / 45-openclaw.sh / the workshop rewrite it to
+# registry.<OPENSHELL_NAMESPACE>.svc.cluster.local for other namespaces (lab mode).
 
 version: 1
 
@@ -31,6 +38,7 @@ filesystem_policy:
   read_write:
     - /sandbox
     - /tmp
+    - /var/tmp
     - /dev/null
 
 landlock:
@@ -41,13 +49,13 @@ process:
   run_as_group: sandbox
 
 network_policies:
-  # Inference is NOT listed here — the agent reaches the model via https://inference.local,
-  # which the supervisor intercepts before policy is evaluated (see the header note).
+  # Inference is NOT listed here — the attached inference provider adds its endpoint
+  # (see the header note).
 
   # --- Skill supply chain: ONE governed source ---
   # The agent's ONLY skill+dep egress is our private in-cluster npm registry (Verdaccio,
-  # `manifests/openclaw/registry.yaml`), reachable over the cluster network at
-  # registry.openshell.svc.cluster.local:4873. Skills enter that registry two ways — authored
+  # deployed per instance by chart/charts/openshell/templates/registry.yaml), reachable over
+  # the cluster network at registry.<namespace>.svc.cluster.local:4873. Skills enter that registry two ways — authored
   # in-sandbox and published, or vetted-and-mirrored from ClawHub by a curator — and the agent
   # installs only from it. Verdaccio uplinks npmjs and caches transitive deps, so the agent
   # never talks to registry.npmjs.org directly either: a single, auditable chokepoint.

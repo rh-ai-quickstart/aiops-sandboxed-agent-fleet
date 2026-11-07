@@ -2,13 +2,15 @@
 #
 #   name      backend(host:port the agent may reach, or "-")                   skill(a @scope/name registry skill, or "-")
 #
-# - name    : the agent (also the fleet-roles/<name>/ folder with its IDENTITY.md + SOUL.md)
+# - name    : the agent (also the fleet-roles/<name>/ folder with its IDENTITY.md + SOUL.md + policy.yaml)
 # - backend : the ONE host:port this agent's policy allows (its tool); "-" = no egress
 # - skill   : optional registry skill to install. "-" = none (the agent queries via its SOUL,
 #             using node/curl). Publish a skill via Part V, then put @workshop/<name> here.
 #
+# The backends are shared cluster services; every agent only sees its own namespaces
+# (per-instance telemetry-reader token; Thanos tenancy port 9092 enforces ?namespace=).
 logs      logging-loki-gateway-http.openshift-logging.svc.cluster.local:8080       -
-metrics   thanos-querier.openshift-monitoring.svc.cluster.local:9091               -
+metrics   thanos-querier.openshift-monitoring.svc.cluster.local:9092               -
 traces    tempo-tempostack-gateway.observability-hub.svc.cluster.local:8080        -
 events    logging-loki-gateway-http.openshift-logging.svc.cluster.local:8080       -
 analyst   -                                                                         -
