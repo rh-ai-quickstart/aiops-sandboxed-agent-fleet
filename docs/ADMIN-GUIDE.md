@@ -66,10 +66,10 @@ oc login https://api.<cluster-domain>:6443 -u <admin-user>
 
 ---
 
-## 3. Build the workshop image
+## 3. Build the workshop image (optional)
 
-The chart default (`quay.io/mmurakam/nemoclaw-workshop:v0.2.9`) predates this version. Build the image
-from this revision and point `WORKSHOP_IMAGE` at it.
+The chart default, `quay.io/mouachan/nemoclaw-workshop:v0.3.0`, is built from this repository: nothing to build. Rebuild the image
+only if you change the web app or the lessons, then point `WORKSHOP_IMAGE` at it.
 
 **Option A — in the cluster (no local container runtime, native amd64):**
 
@@ -212,7 +212,7 @@ cp .env.example .env
 Minimum for a lab with self-hosted inference:
 
 ```bash
-WORKSHOP_IMAGE="<image from §3>"
+# WORKSHOP_IMAGE="<image from §3>"   # only if you rebuilt it; default: the chart's published image
 NEMOCLAW_INFERENCE_BASE_URL="https://maas.<apps-domain>/maas-models/nemotron-3-nano/v1"
 NEMOCLAW_MODEL="nemotron-3-nano"
 LAB_INFERENCE_KEYS_FILE="$PWD/.lab/maas-keys.csv"   # one key per attendee
@@ -361,7 +361,7 @@ cluster-wide and kept; remove them from OperatorHub if the cluster is reused for
 ## 11. Single-instance mode
 
 ```bash
-cp .env.example .env    # set WORKSHOP_IMAGE and the inference variables
+cp .env.example .env    # set the inference variables (WORKSHOP_IMAGE only if you rebuilt it)
 scripts/deploy.sh       # observability, agent-sandbox, Grafana, gateway + workshop (namespace openshell), demo app, fleet
 ```
 

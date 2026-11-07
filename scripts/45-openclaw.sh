@@ -123,7 +123,7 @@ if [[ "$CONFIGURED" == true ]]; then
     --arg api "$INFERENCE_API" --arg pw "$GW_PASSWORD" --arg port "$UI_PORT" \
     --argjson cw "${NEMOCLAW_MODEL_CONTEXT_WINDOW:-65536}" \
     '{
-       gateway: { port: ($port | tonumber), auth: { password: $pw },
+       gateway: { port: ($port | tonumber), auth: { password: $pw }, trustedProxies: ["127.0.0.1/32"],
                   remote: { url: ("ws://127.0.0.1:" + $port), password: $pw },
                   controlUi: { dangerouslyAllowHostHeaderOriginFallback: true },
                   http: { endpoints: { chatCompletions: { enabled: true } } } },
@@ -137,7 +137,7 @@ if [[ "$CONFIGURED" == true ]]; then
      }')"
 else
   OPENCLAW_JSON="$(jq -n --arg pw "$GW_PASSWORD" --arg port "$UI_PORT" \
-    '{ gateway: { port: ($port | tonumber), auth: { password: $pw }, remote: { password: $pw },
+    '{ gateway: { port: ($port | tonumber), auth: { password: $pw }, remote: { password: $pw }, trustedProxies: ["127.0.0.1/32"],
                   controlUi: { dangerouslyAllowHostHeaderOriginFallback: true } } }')"
 fi
 # apiKey stays the literal ${OPENAI_API_KEY}: OpenClaw substitutes the sandbox's current provider
@@ -173,7 +173,7 @@ sleep 2
 BOOTSTRAP_JS='const fs=require("fs");const dir="/sandbox/.openclaw/devices";const p=dir+"/paired.json";if(!fs.existsSync(p)){console.log("no paired devices yet");process.exit(0);}const d=JSON.parse(fs.readFileSync(p,"utf8"));const want=["operator.pairing","operator.admin","operator.approvals","operator.read","operator.write"];for(const k in d){d[k].scopes=want;d[k].approvedScopes=want;if(d[k].tokens&&d[k].tokens.operator){d[k].tokens.operator.scopes=want;}}fs.writeFileSync(p,JSON.stringify(d));try{fs.writeFileSync(dir+"/pending.json","{}");}catch(e){}console.log("admin-bootstrapped "+Object.keys(d).length+" device(s)");'
 ox sh -c "echo $(printf '%s' "$BOOTSTRAP_JS" | base64 -w0) | base64 -d > /sandbox/bootstrap-admin.js && node /sandbox/bootstrap-admin.js" \
   || warn "Admin bootstrap step failed — device approvals may need a manual grant."
-ox sh -c "cd /sandbox && [ -f gateway.pid ] && kill \"\$(cat gateway.pid)\" 2>/dev/null; sleep 2; ${start_gw}; sleep 6; grep -E 'listening on ws' /sandbox/gateway.log | tail -1" \
+ox sh -c "cd /sandbox && pkill -f \"^openclaw-gateway\"; sleep 2; pkill -9 -f \"^openclaw-gateway\"; ${start_gw}; sleep 6; grep -E 'listening on ws' /sandbox/gateway.log | tail -1" \
   || warn "Gateway restart after admin bootstrap failed."
 
 log "OpenClaw agent '${AGENT}' is a gateway-managed sandbox in namespace ${NS}:"

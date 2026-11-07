@@ -317,16 +317,16 @@ A plugin only goes live when the gateway **restarts** (step 4 above). It's the s
 
 ```bash
 openshell sandbox exec -n shifty -- sh -c \
-  'cd /sandbox && [ -f gateway.pid ] && kill "$(cat gateway.pid)" 2>/dev/null; sleep 2; setsid nohup openclaw gateway run --port 30789 --bind lan --auth password --password '"${OPENCLAW_GATEWAY_PASSWORD:-openclaw}"' --allow-unconfigured >/sandbox/gateway.log 2>&1 < /dev/null & echo $! > gateway.pid; for i in $(seq 1 15); do grep -qE "\[gateway\] ready|listening on ws" /sandbox/gateway.log && break; sleep 2; done; openclaw plugins list --enabled | grep -i hello'
+  'cd /sandbox && pkill -f "^openclaw-gateway"; sleep 2; pkill -9 -f "^openclaw-gateway"; setsid nohup openclaw gateway run --port 30789 --bind lan --auth password --password '"${OPENCLAW_GATEWAY_PASSWORD:-openclaw}"' --allow-unconfigured >/sandbox/gateway.log 2>&1 < /dev/null & echo $! > gateway.pid; for i in $(seq 1 15); do grep -qE "\[gateway\] ready|listening on ws" /sandbox/gateway.log && break; sleep 2; done; openclaw plugins list --enabled | grep -i hello'
 ```
 
 You'll see **Hello World** in the enabled list. (Restarting the gateway briefly drops the UI forward — the workshop pod's `openclaw-forward` sidecar reconnects on its own within a few seconds; just reload the UI.)
 
 Now <ServiceLink service="openclaw">open the OpenClaw UI</ServiceLink> and ask the agent, in plain English:
 
-> use the hello tool to greet WeAreDevelopers
+> use the hello tool to greet Red Hat
 
-The agent picks the `hello` tool, calls it with `name: "WeAreDevelopers"`, and the tool returns **`Hello, WeAreDevelopers!`** — which the agent relays back in chat. (No name? It defaults to `Hello, world!`.) That's the whole point: you went from *installed* to the **model actually invoking your skill** — and it ran inside the same seal as everything else. If the skill tried to reach a host outside the policy, it'd be blocked and audited, exactly like any other action.
+The agent picks the `hello` tool, calls it with `name: "Red Hat"`, and the tool returns **`Hello, Red Hat!`** — which the agent relays back in chat. (No name? It defaults to `Hello, world!`.) That's the whole point: you went from *installed* to the **model actually invoking your skill** — and it ran inside the same seal as everything else. If the skill tried to reach a host outside the policy, it'd be blocked and audited, exactly like any other action.
 
 <Callout type="rh" title="Skills are capabilities you can prove">
 On most agent stacks, "install a plugin" means handing arbitrary code your whole network. Here, a skill is gated three ways — registry, enablement, and egress — and every byte it moves is in the audit log. That's the difference between an agent that's <em>extensible</em> and one that's extensible <em>and</em> governable.

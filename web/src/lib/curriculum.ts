@@ -9,7 +9,7 @@ export const CURRICULUM: Part[] = [
     title: "Part I · Welcome",
     subtitle: "The event, the platform, what you need",
     lessons: [
-      { slug: "welcome", title: "Welcome — Red Hat × NVIDIA", blurb: "WeAreDevelopers 2026: build a sandboxed AI agent on OpenShift, powered by NVIDIA.", minutes: 5 },
+      { slug: "welcome", title: "Welcome — Red Hat × NVIDIA", blurb: "Hands-on lab: build a sandboxed AI agent on OpenShift, powered by NVIDIA.", minutes: 5 },
       { slug: "prerequisites", title: "Prerequisites", blurb: "A laptop, a browser, and access to an OpenShift cluster. No GPU needed on your side.", minutes: 4 },
     ],
   },

@@ -5,7 +5,7 @@ export default function Home() {
   return (
     <main className="mx-auto max-w-4xl px-6 py-16">
       <div className="inline-flex items-center gap-2 rounded-full border border-[var(--color-line-2)] px-3 py-1 text-xs text-[var(--color-fg-dim)]">
-        WeAreDevelopers 2026 · Red Hat × NVIDIA
+        Hands-on lab · Red Hat × NVIDIA
       </div>
       <h1 className="mt-5 text-4xl font-extrabold tracking-tight md:text-5xl">
         Deploy an AI agent on <span className="text-[var(--color-rh-bright)]">OpenShift</span>,

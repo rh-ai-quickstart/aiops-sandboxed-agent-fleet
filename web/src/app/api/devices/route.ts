@@ -96,9 +96,9 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, action, error: "No operator device paired yet — open the agent's Control UI once (so a device tries to pair), then click Enable approvals again." }, { status: 409 });
       // restart the in-sandbox gateway so it reloads the new scopes
       await openshell(["sandbox", "exec", "-n", AGENT, "--", "sh", "-c",
-        `cd /sandbox && [ -f gateway.pid ] && kill "$(cat gateway.pid)" 2>/dev/null; sleep 2; ` +
+        `cd /sandbox && pkill -f "^openclaw-gateway"; sleep 2; pkill -9 -f "^openclaw-gateway"; ` +
         `setsid nohup openclaw gateway run --port ${UI_PORT} --bind lan --auth password --password '${pw}' --allow-unconfigured >/sandbox/gateway.log 2>&1 </dev/null & ` +
-        `echo $! >/sandbox/gateway.pid; sleep 6; grep -E 'listening on ws' /sandbox/gateway.log | tail -1`], 25000).catch(() => {});
+        `echo $! >/sandbox/gateway.pid; sleep 6; grep -E '\\[gateway\\] ready|listening on ws' /sandbox/gateway.log | tail -1`], 25000).catch(() => {});
       return NextResponse.json({ ok: true, action, output: "Operator granted admin — approvals enabled. Reload the Control UI to reconnect." });
     } catch (e) {
       return NextResponse.json({ ok: false, action, error: e instanceof Error ? e.message : String(e) }, { status: 502 });

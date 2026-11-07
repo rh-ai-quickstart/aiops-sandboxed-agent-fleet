@@ -20,6 +20,7 @@ PH=$(openshell sandbox exec -n shifty -- sh -c 'printf %s "$OPENAI_API_KEY"')
 OC=$(jq -n --arg model "$NEMOCLAW_MODEL" --arg pw "$PW" --arg base "$NEMOCLAW_INFERENCE_BASE_URL" \
   --argjson cw "${NEMOCLAW_MODEL_CONTEXT_WINDOW:-65536}" '{
     gateway: { port:30789, auth:{password:$pw}, remote:{ url:"ws://127.0.0.1:30789", password:$pw },
+               trustedProxies:["127.0.0.1/32"],
                controlUi:{ dangerouslyAllowHostHeaderOriginFallback:true } },
     agents:  { defaults:{ model:{ primary:("custom/"+$model) } } },
     models:  { providers:{ custom:{ baseUrl:$base,
@@ -38,6 +39,7 @@ That `echo "$OC" | jq .` prints the exact `openclaw.json` you're staging — it 
   "gateway": {
     "port": 30789, "auth": { "password": "<your gateway password>" },
     "remote": { "url": "ws://127.0.0.1:30789", "password": "<your gateway password>" },
+    "trustedProxies": [ "127.0.0.1/32" ],
     "controlUi": { "dangerouslyAllowHostHeaderOriginFallback": true }
   },
   "agents": { "defaults": { "model": { "primary": "custom/<your-model>" } } },
@@ -54,7 +56,7 @@ That `echo "$OC" | jq .` prints the exact `openclaw.json` you're staging — it 
 }
 ```
 
-`Config valid` means OpenClaw accepted it. Two things to notice: `models.providers.custom.baseUrl` is your **real** endpoint, and `apiKey` is `${OPENAI_API_KEY}` — at startup OpenClaw replaces it with the sandbox's **placeholder**, never your key. When OpenClaw (`node`) calls your endpoint, the request leaves through the sandbox's egress proxy; the supervisor sees the placeholder in the `Authorization` header and swaps in the real key — because the provider's profile says that credential may go to *that* host, from *that* binary. Anywhere else, the placeholder stays a placeholder.
+`Config valid` means OpenClaw accepted it. (`trustedProxies` is for the next lesson: your browser reaches this UI through `openshell forward`, which connects from `127.0.0.1` and passes on the browser's forwarded headers. OpenClaw only accepts those headers from a proxy you list, and otherwise answers `proxy_attribution_required`.) Two more things to notice: `models.providers.custom.baseUrl` is your **real** endpoint, and `apiKey` is `${OPENAI_API_KEY}` — at startup OpenClaw replaces it with the sandbox's **placeholder**, never your key. When OpenClaw (`node`) calls your endpoint, the request leaves through the sandbox's egress proxy; the supervisor sees the placeholder in the `Authorization` header and swaps in the real key — because the provider's profile says that credential may go to *that* host, from *that* binary. Anywhere else, the placeholder stays a placeholder.
 
 You can see the rule the provider added to the sandbox's **effective** policy (your file + provider-composed entries):
 
@@ -70,15 +72,15 @@ The agent is sealed under <strong>Landlock</strong> — it can only write to <co
 
 So far the sandbox has just been **idling** — its main process is `sleep infinity`. Now we launch **OpenClaw** inside it, with the config you just wrote — on port `30789` (LAN bind so we can expose it next), password auth.
 
-We start it under `setsid` so it runs in its **own session** and keeps running after this command returns (a plain background process would be killed when the `exec` session ends). We record its PID to `/sandbox/gateway.pid` and kill that exact PID first — so this same command is also how you **restart** OpenClaw to pick up later config changes (run it again any time):
+We start it under `setsid` so it runs in its **own session** and keeps running after this command returns (a plain background process would be killed when the `exec` session ends). It first stops any running gateway by its process name, `openclaw-gateway` — so this same command is also how you **restart** OpenClaw to pick up later config changes (run it again any time):
 
 ```bash
 openshell sandbox exec -n shifty -- sh -c \
-  'cd /sandbox && [ -f gateway.pid ] && kill "$(cat gateway.pid)" 2>/dev/null; sleep 2; setsid nohup openclaw gateway run --port 30789 --bind lan --auth password --password '"${PW:-${OPENCLAW_GATEWAY_PASSWORD:-openclaw}}"' --allow-unconfigured >/sandbox/gateway.log 2>&1 < /dev/null & echo $! > gateway.pid; for i in $(seq 1 15); do grep -qE "\[gateway\] ready|listening on ws" /sandbox/gateway.log && break; sleep 2; done; grep -E "\[gateway\] ready|listening on ws" /sandbox/gateway.log'
+  'cd /sandbox && pkill -f "^openclaw-gateway"; sleep 2; pkill -9 -f "^openclaw-gateway"; setsid nohup openclaw gateway run --port 30789 --bind lan --auth password --password '"${PW:-${OPENCLAW_GATEWAY_PASSWORD:-openclaw}}"' --allow-unconfigured >/sandbox/gateway.log 2>&1 < /dev/null & echo $! > gateway.pid; for i in $(seq 1 15); do grep -qE "\[gateway\] ready|listening on ws" /sandbox/gateway.log && break; sleep 2; done; grep -E "\[gateway\] ready|listening on ws" /sandbox/gateway.log'
 ```
 
-<Callout type="note" title="Why a PID file, not `gateway restart` or `pkill`?">
-There <em>is</em> an <code>openclaw gateway restart</code>, but it manages an <strong>installed OS service</strong> (systemd/launchd) — this sandbox is a minimal container with no init system, so we run the gateway in the foreground ourselves. <code>gateway run --force</code> can't free the port either (it needs <code>fuser</code>/<code>lsof</code>, neither of which ships here). And pattern-killing is unreliable: the running gateway's process line is just <code>openclaw</code> (so <code>pkill -f "gateway run"</code> never matches it, while <code>pkill -f openclaw</code> would also kill the very shell running this command). So we record the PID on start and <code>kill</code> exactly that — robust, with only <code>kill</code> + <code>setsid</code>.
+<Callout type="note" title="Why stop it by name, not `gateway restart` or a PID file?">
+There <em>is</em> an <code>openclaw gateway restart</code> (and <code>gateway stop</code>), but they manage an <strong>installed OS service</strong> (systemd/launchd) — this sandbox is a minimal container with no init system, so we run the gateway in the foreground ourselves. A PID file isn't reliable either: OpenClaw renames its process <code>openclaw-gateway</code> and can restart itself under a <strong>new PID</strong> (it does after a plugin install), and a second gateway then refuses to start on the same state directory. So we match the process name from its start, <code>pkill -f "^openclaw-gateway"</code>: it never matches the shell running this command. A gateway stuck mid-restart ignores a normal stop, hence the <code>pkill -9</code> two seconds later.
 </Callout>
 
 The line that matters is **`[gateway] ready`** — your agent's Control UI + WebSocket gateway is up on port `30789`, running inside the sealed sandbox. You'll expose it with `openshell forward` in the next lesson.

@@ -68,9 +68,9 @@ monitoring:
 
 workshop:
   enabled: true
-  # Override with WORKSHOP_IMAGE (deploy.sh / lab.sh) — the image must be built from the
-  # same revision as this chart (probes on /healthz, env contract in docs/CONTRACT.md).
-  image: quay.io/mmurakam/nemoclaw-workshop:v0.2.9
+  # Built from this repository (web/Dockerfile). Override with WORKSHOP_IMAGE (deploy.sh / lab.sh)
+  # only when you rebuild it: it must match this chart (probes on /healthz, docs/CONTRACT.md).
+  image: quay.io/mouachan/nemoclaw-workshop:v0.3.0
   inference:
     baseUrl: ""
     model: ""

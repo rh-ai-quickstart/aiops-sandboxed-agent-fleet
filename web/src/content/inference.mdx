@@ -9,10 +9,10 @@ We don't paste the key into the agent. Instead we register the endpoint + key wi
 </Callout>
 
 <Callout type="rh" title="Shared lab? This is already done for you">
-In a facilitated multi-user lab your <code>.env</code> and the gateway provider are pre-configured. Every command below is idempotent — run them anyway to see each piece, nothing breaks.
+In a facilitated multi-user lab your <code>.env</code> already holds your endpoint, model and personal key, and the gateway provider is registered. <strong>Skip Step 1</strong> (don't edit anything), then run Step 2 and Step 3 to check it works. The provider commands after that are idempotent: run them to see each piece, nothing breaks.
 </Callout>
 
-## Step 1 — Put your values in `.env`
+## Step 1 — Put your values in `.env` (your own deployment only)
 
 Open the workshop's `.env` in an editor:
 
@@ -43,20 +43,30 @@ You should see your URL and model, and the key's first few characters (we don't 
 
 ## Step 3 — Verify the endpoint actually works
 
-Before registering it, sanity-check the endpoint with the standard OpenAI-compatible `/v1/models` call, authenticated with your key:
+Before registering it, ask the model for a real answer, authenticated with your key:
 
 ```bash
-curl -sS "$NEMOCLAW_INFERENCE_BASE_URL/models" -H "Authorization: Bearer $NEMOCLAW_API_KEY" | head -c 600; echo
+BODY=$(jq -n --arg m "$NEMOCLAW_MODEL" '{model:$m, max_tokens:200, messages:[{role:"user", content:"Reply with exactly: PONG"}]}')
+curl -sS "$NEMOCLAW_INFERENCE_BASE_URL/chat/completions" -H "Authorization: Bearer $NEMOCLAW_API_KEY" \
+  -H "Content-Type: application/json" -d "$BODY" | jq -r '.choices[0].message.content // .error'
 ```
 
-A JSON list of models (look for `"object": "list"` and model `"id"`s) means your **endpoint + key are good**. Confirm your chosen model is in the list:
+`PONG` means your **endpoint, model and key are good**. (Some endpoints also list their models at `/models`, but a Models-as-a-Service gateway in front of an external model can return an empty list: a real completion is the reliable test.)
+
+Your agent also calls **tools** (run a command, read a file, search the web), so the model server must accept tool calls:
 
 ```bash
-curl -sS "$NEMOCLAW_INFERENCE_BASE_URL/models" -H "Authorization: Bearer $NEMOCLAW_API_KEY" | grep -o "\"id\":\"[^\"]*\"" | head -20
+BODY=$(jq -n --arg m "$NEMOCLAW_MODEL" '{model:$m, max_tokens:300, tool_choice:"auto",
+  messages:[{role:"user", content:"What is the weather in Paris? Use the tool."}],
+  tools:[{type:"function", function:{name:"get_weather", parameters:{type:"object", properties:{city:{type:"string"}}, required:["city"]}}}]}')
+curl -sS "$NEMOCLAW_INFERENCE_BASE_URL/chat/completions" -H "Authorization: Bearer $NEMOCLAW_API_KEY" \
+  -H "Content-Type: application/json" -d "$BODY" | jq -r '.choices[0].finish_reason // .error.message // .error'
 ```
+
+`tool_calls` is what you want: the model chose the tool instead of answering in text.
 
 <Callout type="warn" title="If it fails">
-<strong>401 / Unauthorized</strong> → wrong or expired key. <strong>404</strong> → the base URL probably shouldn't (or should) end in <code>/v1</code> — match your provider's docs. <strong>Connection error</strong> → check the host name. Fix <code>.env</code> and re-run Step 2 + 3 before moving on.
+<strong>401 / Unauthorized</strong> → wrong or expired key. <strong>404</strong> → the base URL probably shouldn't (or should) end in <code>/v1</code> — match your provider's docs. <strong>Connection error</strong> → check the host name. <strong><code>"auto" tool choice requires --enable-auto-tool-choice…</code></strong> → the model server doesn't accept tool calls: your agent can't work until it does (in a facilitated lab, tell the facilitator). Fix <code>.env</code> and re-run Step 2 + 3 before moving on.
 </Callout>
 
 ## Two pieces: a *profile* and a *provider*

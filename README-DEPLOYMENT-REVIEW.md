@@ -525,14 +525,34 @@ cluster already ran an earlier single-instance install and an OpenShift AI MaaS 
   - Incident Lab: right root cause and action in 38 s, other attendee unaffected, healthy after the fix;
   - **full lesson flow + isolation on a fresh attendee: 119 passed, 0 failed, 0 skipped**.
 
+### 5.9 Feedback from the first dry run (fixed)
+
+A colleague ran the lessons as an attendee on the 20-attendee cluster. Each point was reproduced live
+before fixing.
+
+| Feedback | Cause | Fix |
+|---|---|---|
+| Why `--detach -- sleep infinity` instead of `-- true`? | Intended. With OpenShell 0.1.x the command after `--` is the sandbox's main process: `-- true` exits at once and the sandbox stops being Ready. `sleep infinity` keeps it alive (the agent is started later with `sandbox exec`), and `--detach` returns as soon as the sandbox exists. | None (explained). |
+| *Set Your Inference Endpoint*: the `curl` checks fail | They called `/models`. A MaaS in front of an external model returns an empty list there. | The lesson now checks a real completion (`PONG`) and a tool call (`tool_calls`), and says the endpoint is pre-configured in the lab. |
+| *Give It a Brain*: `openclaw config validate` never runs | The terminal sent a block line by line. `openshell sandbox exec` reads stdin, so it swallowed the lines that followed it. | "Run in shell" sends the block as a bracketed paste: the shell reads the whole block before running it. Verified with a 2-line block over the real `/ws/term`. |
+| *Open the Agent UI*: `proxy_attribution_required` | OpenClaw 2026.8 only trusts forwarded client headers from listed proxies; the UI arrives through `openshell forward` from `127.0.0.1`. | `gateway.trustedProxies: ["127.0.0.1/32"]` in the lesson config and in `45-openclaw.sh`. The UI now loads through its Route. |
+| *Identity & Soul*: "WeAreDevelopers 2026" | Event-specific text from the original workshop. | Generic wording in the seed files, lessons, site title and curriculum. |
+| Found while validating: *Web Search* fails with `Gateway websocket admission closed` | Installing a plugin makes OpenClaw restart itself under a new PID, so the restart by PID file left a second gateway that could not start. | Every restart (5 lessons, the approvals API, `45-openclaw.sh`) now stops the gateway by name (`pkill -f "^openclaw-gateway"`, then `-9`). |
+
+Validation on a fresh attendee with the fixed image:
+- full lesson flow + isolation: **119 passed, 0 failed, 0 skipped**;
+- the OpenClaw UI loads through its Route (HTTP 200);
+- a 2-line block sent over `/ws/term` runs both commands.
+
+That image is published as `quay.io/mouachan/nemoclaw-workshop:v0.3.0` and is now the chart default.
+
 ## 6. Known limitations and follow-ups
 
 - **EBS attachments are the binding constraint for 30 attendees.** Each sandbox has a 2 Gi EBS workspace: about 8 volumes per attendee, against about 26 per AWS node. Add lab nodes (ADMIN-GUIDE §8).
 - **GPU capacity.** One L40S keeps an estimated 100–150 agent requests in flight. Use 2 GPU replicas for 30 attendees and stagger the Incident Lab.
-- **Workshop image.**
-  - It must be published somewhere the cluster can pull from (`build-workshop.yml` → `vars.WORKSHOP_IMAGE_REPO`).
-  - The chart default still points at `quay.io/mmurakam/nemoclaw-workshop:v0.2.9`, which predates this branch.
-  - Until a new tag is published, set `WORKSHOP_IMAGE`.
+- **Workshop image.** Published as `quay.io/mouachan/nemoclaw-workshop:v0.3.0` (public, amd64) from the validated build, and set as the
+  chart default. To move it to the project's own registry, publish with `build-workshop.yml`
+  (`vars.WORKSHOP_IMAGE_REPO`) and update `chart/values.yaml`.
 - **eslint 9 is end-of-life upstream.** Moving to eslint 10 is future work.
 - **Tempo `jaegerQuery`.** Deprecated in Tempo 3.11 but kept: nothing in the repo uses it, and removing it is untested.
 - **Legacy lesson path.** Lessons still use `~/nemoclaw-openshift-launchable`. The entrypoint keeps it working through a symlink, so this is cosmetic only.

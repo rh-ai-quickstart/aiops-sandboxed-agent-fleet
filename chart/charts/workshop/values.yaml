@@ -2,7 +2,7 @@
 # Namespaces are derived from .Release.Namespace (gateway, sandboxes, registry, workshop)
 # and .Values.global.demoNamespace (demo app). Defaults reproduce single-instance mode.
 
-image: quay.io/mmurakam/nemoclaw-workshop:v0.2.8
+image: quay.io/mouachan/nemoclaw-workshop:v0.3.0
 imagePullPolicy: IfNotPresent
 replicas: 1
 
